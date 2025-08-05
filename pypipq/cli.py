@@ -3,11 +3,16 @@ Command-line interface for pypipq.
 
 This module provides the main entry point for the pipq command.
 """
-
+import os
 import sys
+import io
 import subprocess
 import click
-from typing import List, Optional
+from typing import List, Optional, Tuple
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+if os.name == 'nt':
+    os.system('chcp 65001')
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -18,13 +23,28 @@ from .core.config import Config
 from .core.validator import validate_package
 
 
-console = Console()
+console = Console(emoji=True, force_terminal=True)
+
+
+def _parse_package_spec(package_spec: str) -> str:
+    """Parse package specification into name.
+    
+    Args:
+        package_spec: Package specification (e.g. "flask" or "flask==2.0.1")
+    
+    Returns:
+        Package name
+    """
+    if '==' in package_spec:
+        return package_spec.split('==', 1)[0]
+    return package_spec
 
 
 @click.group(invoke_without_command=True)
 @click.option("--version", is_flag=True, help="Show version and exit")
+@click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.pass_context
-def main(ctx: click.Context, version: bool) -> None:
+def main(ctx: click.Context, version: bool, verbose: bool) -> None:
     """
     pipq - A secure pip proxy inspired by npq.
     
@@ -49,7 +69,7 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
     """
     Install packages after security validation.
     
-    PACKAGES: One or more package names to install
+    PACKAGES: One or more package names to install (can include versions with ==)
     """
     # Load configuration
     config_obj = Config(config_path=config)
@@ -66,16 +86,19 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
     
     # Validate each package
     all_results = []
-    for package in packages:
-        console.print(f"\\n[bold blue]📦 Analyzing package: {package}[/bold blue]")
+    for package_spec in packages:
+        package_name = _parse_package_spec(package_spec)
+        display_name = package_name
         
-        with Halo(text=f"Validating {package}...", spinner="dots") as spinner:
+        console.print(f"\n[bold blue]📦 Analyzing package: {display_name}[/bold blue]")
+        
+        with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
             try:
-                results = validate_package(package)
+                results = validate_package(package_name, config_obj)
                 all_results.append(results)
-                spinner.succeed(f"Analysis complete for {package}")
+                spinner.succeed(f"Analysis complete for {display_name}")
             except Exception as e:
-                spinner.fail(f"Analysis failed for {package}: {str(e)}")
+                spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
                 if not _should_continue_on_error(config_obj):
                     console.print(f"[red]❌ Aborting installation due to analysis failure.[/red]")
                     sys.exit(1)
@@ -98,18 +121,20 @@ def check(package: str, config: Optional[str]) -> None:
     """
     Check a package without installing it.
     
-    PACKAGE: Package name to analyze
+    PACKAGE: Package name to analyze (can include version with ==)
     """
     config_obj = Config(config_path=config)
+    package_name = _parse_package_spec(package)
+    display_name = package_name
     
-    console.print(f"[bold blue]🔍 Analyzing package: {package}[/bold blue]")
+    console.print(f"[bold blue]🔍 Analyzing package: {display_name}[/bold blue]")
     
-    with Halo(text=f"Validating {package}...", spinner="dots") as spinner:
+    with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
         try:
-            results = validate_package(package)
-            spinner.succeed(f"Analysis complete for {package}")
+            results = validate_package(package_name, config_obj)
+            spinner.succeed(f"Analysis complete for {display_name}")
         except Exception as e:
-            spinner.fail(f"Analysis failed for {package}: {str(e)}")
+            spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
             console.print(f"[red]❌ Could not analyze package: {str(e)}[/red]")
             sys.exit(1)
     
@@ -162,32 +187,58 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
     
     for results in all_results:
         package_name = results["package"]
-        errors = results["errors"]
-        warnings = results["warnings"]
+        errors = results.get("errors", [])
+        warnings = results.get("warnings", [])
+        validator_results = results.get("validator_results", [])
         
-        if not errors and not warnings:
+        if not errors and not warnings and not validator_results:
             console.print(f"[green]✅ {package_name}: No issues found[/green]")
             continue
         
-        # Create a table for this package's results
-        table = Table(title=f"Analysis Results for {package_name}")
-        table.add_column("Type", style="bold")
-        table.add_column("Message")
-        
-        # Add errors
-        for error in errors:
-            table.add_row("ERROR", f"[red]{error}[/red]")
-        
-        # Add warnings
-        for warning in warnings:
-            table.add_row("WARNING", f"[yellow]{warning}[/yellow]")
-        
-        console.print(table)
-        console.print()
+        console.print(f"\n[bold blue]📦 Results for: {package_name}[/bold blue]")
+
+        # Display aggregated errors and warnings
+        if errors or warnings:
+            table = Table(title=f"Aggregated Issues for {package_name}")
+            table.add_column("Type", style="bold")
+            table.add_column("Message")
+
+            for error in errors:
+                table.add_row("ERROR", f"[red]{error}[/red]")
+            for warning in warnings:
+                table.add_row("WARNING", f"[yellow]{warning}[/yellow]")
+            console.print(table)
+            console.print()
+
+        # Display detailed validator results
+        for val_result in validator_results:
+            val_name = val_result["name"]
+            val_category = val_result["category"]
+            val_description = val_result["description"]
+            val_errors = val_result["errors"]
+            val_warnings = val_result["warnings"]
+            val_info = val_result["info"]
+
+            if val_errors or val_warnings or val_info:
+                table = Table(title=f"Validator: {val_name} ({val_category})")
+                table.add_column("Type", style="bold")
+                table.add_column("Message")
+
+                if val_description:
+                    table.add_row("INFO", f"[cyan]{val_description}[/cyan]")
+
+                for err in val_errors:
+                    table.add_row("ERROR", f"[red]{err}[/red]")
+                for warn in val_warnings:
+                    table.add_row("WARNING", f"[yellow]{warn}[/yellow]")
+                for key, value in val_info.items():
+                    table.add_row("INFO", f"[magenta]{key}: {value}[/magenta]")
+                console.print(table)
+                console.print()
     
     if show_summary:
-        total_errors = sum(len(r["errors"]) for r in all_results)
-        total_warnings = sum(len(r["warnings"]) for r in all_results)
+        total_errors = sum(len(r.get("errors", [])) for r in all_results)
+        total_warnings = sum(len(r.get("warnings", [])) for r in all_results)
         
         if total_errors > 0 or total_warnings > 0:
             summary_text = f"Summary: {total_errors} error(s), {total_warnings} warning(s)"

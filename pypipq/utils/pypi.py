@@ -7,6 +7,9 @@ from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 
 
+
+
+
 def fetch_package_metadata(pkg_name: str, pypi_url: str = "https://pypi.org/pypi/") -> Dict[str, Any]:
     """
     Fetch package metadata from PyPI API.

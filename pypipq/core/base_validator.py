@@ -33,15 +33,26 @@ class BaseValidator(ABC):
         self.warnings: List[str] = []
         self.info: Dict[str, Any] = {}
     
-    @abstractmethod
-    def validate(self) -> None:
+    def validate(self) -> Dict[str, Any]:
         """
-        Perform the validation check.
+        Perform the validation check and return results.
         
-        This method should populate self.errors and self.warnings lists
-        based on the analysis results.
+        This method wraps _validate() to ensure consistent error handling.
         """
-        raise NotImplementedError("Subclasses must implement validate()")
+        try:
+            self._validate()
+        except Exception as e:
+            self.add_error(f"Validator {self.name} failed: {str(e)}")
+        return self.result()
+    
+    @abstractmethod
+    def _validate(self) -> None:
+        """
+        Abstract method for subclasses to implement their validation logic.
+        
+        This method should populate self.errors, self.warnings, and self.info.
+        """
+        raise NotImplementedError("Subclasses must implement _validate()")
     
     def result(self) -> Dict[str, Any]:
         """

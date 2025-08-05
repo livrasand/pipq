@@ -21,23 +21,22 @@ class MaintainerValidator(BaseValidator):
     category = "Quality"
     description = "Detects packages with a single maintainer or limited support"
     
-    def validate(self) -> None:
+    def _validate(self) -> None:
         """Check if the package is maintained by a single individual."""
         
         # Get author and maintainer information from metadata
-        author = self.get_metadata_field("author", "").strip()
-        author_email = self.get_metadata_field("author_email", "").strip()
-        maintainer = self.get_metadata_field("maintainer", "").strip()
-        maintainer_email = self.get_metadata_field("maintainer_email", "").strip()
+        author = self.get_metadata_field("author")
+        author = author.strip() if isinstance(author, str) else ""
+        author_email = self.get_metadata_field("author_email")
+        author_email = author_email.strip() if isinstance(author_email, str) else ""
+        maintainer = self.get_metadata_field("maintainer")
+        maintainer = maintainer.strip() if isinstance(maintainer, str) else ""
+        maintainer_email = self.get_metadata_field("maintainer_email")
+        maintainer_email = maintainer_email.strip() if isinstance(maintainer_email, str) else ""
         
         # Heuristic check: consider the package risky if maintainer is not specified
         # or if author is the same as the maintainer with no additional support.
         
-        if not maintainer:
-            # No maintainer information, use author as a fallback
-            maintainer = author
-            maintainer_email = author_email
-            
         if not maintainer or maintainer.lower() == "none":
             self.add_warning(
                 f"Package '{self.pkg_name}' is maintained solely by its author "

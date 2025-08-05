@@ -6,7 +6,7 @@ or very old/abandoned (potential security risks).
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ..core.base_validator import BaseValidator
 
 
@@ -28,61 +28,77 @@ class AgeValidator(BaseValidator):
     NEW_PACKAGE_DAYS = 7      # Warn if package is less than this many days old
     OLD_PACKAGE_DAYS = 365 * 2  # Warn if no updates for this many days
     
-    def validate(self) -> None:
+    def _validate(self) -> None:
         """Check package age and release patterns."""
+        upload_time = self._get_upload_time()
+        if not upload_time:
+            self.add_warning("Could not determine package upload time")
+            return
+        
+        # Parse upload time
         try:
-            # Get package creation and update information
-            upload_time = self.get_metadata_field("upload_time")
-            releases = self.metadata.get("releases", {})
-            
-            if not upload_time:
-                self.add_warning("Could not determine package upload time")
-                return
-            
-            # Parse upload time
-            try:
-                latest_upload = datetime.fromisoformat(upload_time.replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                self.add_warning("Could not parse package upload time")
-                return
-            
-            now = datetime.now(latest_upload.tzinfo)
-            days_since_upload = (now - latest_upload).days
-            
-            # Check if package is very new
-            if days_since_upload < self.NEW_PACKAGE_DAYS:
-                if days_since_upload == 0:
-                    self.add_warning(
-                        f"Package '{self.pkg_name}' was uploaded today. "
-                        f"Exercise caution with very new packages."
-                    )
-                else:
-                    self.add_warning(
-                        f"Package '{self.pkg_name}' was uploaded {days_since_upload} "
-                        f"day{'s' if days_since_upload != 1 else ''} ago. "
-                        f"Exercise caution with very new packages."
-                    )
-            
-            # Check if package hasn't been updated in a long time
-            elif days_since_upload > self.OLD_PACKAGE_DAYS:
-                years_old = days_since_upload // 365
+            latest_upload = datetime.fromisoformat(upload_time.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            self.add_warning("Could not parse package upload time")
+            return
+        
+        now = datetime.now(latest_upload.tzinfo)
+        days_since_upload = (now - latest_upload).days
+        
+        # Check if package is very new
+        if days_since_upload < self.NEW_PACKAGE_DAYS:
+            if days_since_upload == 0:
                 self.add_warning(
-                    f"Package '{self.pkg_name}' hasn't been updated in "
-                    f"{years_old} year{'s' if years_old != 1 else ''} "
-                    f"({days_since_upload} days). This may indicate an abandoned project."
+                    f"Package '{self.pkg_name}' was uploaded today. "
+                    f"Exercise caution with very new packages."
                 )
-            
-            # Analyze release patterns if we have release data
-            if releases:
-                self._analyze_release_patterns(releases, latest_upload)
-            
-            # Add informational data
-            self.add_info("upload_time", upload_time)
-            self.add_info("days_since_upload", days_since_upload)
-            self.add_info("total_releases", len(releases))
-            
-        except Exception as e:
-            self.add_warning(f"Could not analyze package age: {str(e)}")
+            else:
+                self.add_warning(
+                    f"Package '{self.pkg_name}' was uploaded {days_since_upload} "
+                    f"day{'s' if days_since_upload != 1 else ''} ago. "
+                    f"Exercise caution with very new packages."
+                )
+        
+        # Check if package hasn't been updated in a long time
+        elif days_since_upload > self.OLD_PACKAGE_DAYS:
+            years_old = days_since_upload // 365
+            self.add_warning(
+                f"Package '{self.pkg_name}' hasn't been updated in "
+                f"{years_old} year{'s' if years_old != 1 else ''} "
+                f"({days_since_upload} days). This may indicate an abandoned project."
+            )
+        
+        # Analyze release patterns if we have release data
+        releases = self.metadata.get("releases", {})
+        if releases:
+            self._analyze_release_patterns(releases, latest_upload)
+        
+        # Add informational data
+        self.add_info("upload_time", upload_time)
+        self.add_info("days_since_upload", days_since_upload)
+        self.add_info("total_releases", len(releases))
+
+    def _get_upload_time(self) -> Optional[str]:
+        """
+        Attempts to get the upload time from various metadata fields.
+        """
+        # Try 'upload_time_iso_8601' from 'info' first
+        upload_time = self.get_metadata_field("upload_time_iso_8601")
+        if upload_time:
+            return upload_time
+
+        # Fallback to 'upload_time' from 'info'
+        upload_time = self.get_metadata_field("upload_time")
+        if upload_time:
+            return upload_time
+
+        # If not found in 'info', try 'urls' for a source distribution upload time
+        # This is a less reliable fallback but can sometimes provide a date
+        urls = self.metadata.get("urls", [])
+        for url_info in urls:
+            if url_info.get("packagetype") == "sdist":
+                return url_info.get("upload_time_iso_8601")
+        return None
     
     def _analyze_release_patterns(self, releases: Dict[str, Any], latest_upload: datetime) -> None:
         """

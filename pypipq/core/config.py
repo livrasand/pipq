@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+
 try:
     import tomllib  # Python 3.11+
 except ImportError:
@@ -34,6 +35,11 @@ class Config:
         "pypi_url": "https://pypi.org/pypi/",
         "colors": True,
         "verbose": False,
+        "vulnerability": {
+            "enabled": True,
+            "update_interval_days": 7,
+            "sources": ["osv", "safetydb", "pypa"],
+        },
     }
     
     def __init__(self, config_path: Optional[Path] = None) -> None:
@@ -48,34 +54,37 @@ class Config:
     
     def _load_config(self, config_path: Optional[Path] = None) -> None:
         """Load configuration from various sources."""
-        # 1. Load from config file
         if config_path:
             self._load_file_config(config_path)
         else:
-            # Try default locations
             self._load_default_configs()
         
-        # 2. Override with environment variables
         self._load_env_config()
     
     def _load_default_configs(self) -> None:
         """Load configuration from default locations."""
-        # User config: ~/.config/pipq/config.toml
         user_config = Path.home() / ".config" / "pipq" / "config.toml"
         if user_config.exists():
             self._load_file_config(user_config)
         
-        # Project config: ./pypipq.toml
         project_config = Path.cwd() / "pypipq.toml"
         if project_config.exists():
             self._load_file_config(project_config)
     
+    def _merge_configs(self, base: Dict[str, Any], new: Dict[str, Any]) -> None:
+        """Recursively merge new config into base config."""
+        for key, value in new.items():
+            if isinstance(value, dict) and key in base and isinstance(base[key], dict):
+                self._merge_configs(base[key], value)
+            else:
+                base[key] = value
+
     def _load_file_config(self, config_path: Path) -> None:
         """Load configuration from a TOML file."""
         try:
             with open(config_path, "rb") as f:
                 file_config = tomllib.load(f)
-                self.config.update(file_config)
+                self._merge_configs(self.config, file_config)
         except Exception as e:
             print(f"Warning: Could not load config from {config_path}: {e}")
     
@@ -90,32 +99,55 @@ class Config:
             "PIPQ_PYPI_URL": "pypi_url",
             "PIPQ_COLORS": "colors",
             "PIPQ_VERBOSE": "verbose",
+            "PIPQ_VULNERABILITY_ENABLED": "vulnerability.enabled",
+            "PIPQ_VULNERABILITY_CACHE_DIR": "vulnerability.cache_dir",
+            "PIPQ_VULNERABILITY_UPDATE_INTERVAL_DAYS": "vulnerability.update_interval_days",
+            "PIPQ_VULNERABILITY_SOURCES": "vulnerability.sources",
         }
         
         for env_var, config_key in env_mapping.items():
             value = os.getenv(env_var)
             if value is not None:
-                # Convert string values to appropriate types
-                if config_key in ["auto_continue_warnings", "colors", "verbose"]:
-                    self.config[config_key] = value.lower() in ("true", "1", "yes", "on")
-                elif config_key == "timeout":
+                keys = config_key.split('.')
+                target_config = self.config
+                for key in keys[:-1]:
+                    if key not in target_config or not isinstance(target_config[key], dict):
+                        target_config[key] = {}
+                    target_config = target_config[key]
+                
+                leaf_key = keys[-1]
+
+                if leaf_key in ["auto_continue_warnings", "colors", "verbose", "enabled"]:
+                    target_config[leaf_key] = value.lower() in ("true", "1", "yes", "on")
+                elif leaf_key in ["timeout", "update_interval_days"]:
                     try:
-                        self.config[config_key] = int(value)
+                        target_config[leaf_key] = int(value)
                     except ValueError:
                         pass
-                elif config_key in ["disable_validators", "enable_validators"]:
-                    self.config[config_key] = [v.strip() for v in value.split(",") if v.strip()]
+                elif leaf_key in ["disable_validators", "enable_validators", "sources"]:
+                    target_config[leaf_key] = [v.strip() for v in value.split(",") if v.strip()]
                 else:
-                    self.config[config_key] = value
+                    target_config[leaf_key] = value
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value."""
-        return self.config.get(key, default)
-    
+        keys = key.split('.')
+        value = self.config
+        try:
+            for k in keys:
+                value = value[k]
+            return value
+        except (KeyError, TypeError):
+            return default
+
     def set(self, key: str, value: Any) -> None:
         """Set a configuration value."""
-        self.config[key] = value
-    
+        keys = key.split('.')
+        target_config = self.config
+        for k in keys[:-1]:
+            target_config = target_config.setdefault(k, {})
+        target_config[keys[-1]] = value
+
     def is_validator_enabled(self, validator_name: str) -> bool:
         """
         Check if a validator is enabled based on configuration.
@@ -126,24 +158,27 @@ class Config:
         Returns:
             True if validator should run, False otherwise
         """
-        # If enable_validators is specified, only those validators run
-        if self.config["enable_validators"]:
-            return validator_name in self.config["enable_validators"]
+        validator_config = self.get(f"{validator_name.lower()}")
+        if isinstance(validator_config, dict) and "enabled" in validator_config:
+            if not validator_config["enabled"]:
+                return False
+
+        if self.get("enable_validators"):
+            return validator_name in self.get("enable_validators")
         
-        # Otherwise, run all validators except disabled ones
-        return validator_name not in self.config["disable_validators"]
+        return validator_name not in self.get("disable_validators")
     
     def should_prompt(self) -> bool:
         """Check if we should prompt user for confirmation."""
-        return self.config["mode"] in ["warn", "block"]
+        return self.get("mode") in ["warn", "block"]
     
     def should_block(self) -> bool:
         """Check if we should block installation on errors."""
-        return self.config["mode"] == "block"
+        return self.get("mode") == "block"
     
     def should_auto_continue(self) -> bool:
         """Check if we should auto-continue on warnings."""
-        return self.config["auto_continue_warnings"]
+        return self.get("auto_continue_warnings")
     
     def __str__(self) -> str:
         """String representation of the configuration."""

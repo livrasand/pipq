@@ -9,5 +9,6 @@ packages before installation.
 from .typosquat import TyposquatValidator
 from .age import AgeValidator
 from .maintainer import MaintainerValidator
+from .vulnerability import VulnerabilityValidator
 
-__all__ = ["TyposquatValidator", "AgeValidator", "MaintainerValidator"]
+__all__ = ["TyposquatValidator", "AgeValidator", "MaintainerValidator", "VulnerabilityValidator"]

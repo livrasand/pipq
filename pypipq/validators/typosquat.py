@@ -34,7 +34,7 @@ class TyposquatValidator(BaseValidator):
         "isort", "pre-commit", "pipenv", "poetry", "wheel", "twine",
     }
     
-    def validate(self) -> None:
+    def _validate(self) -> None:
         """Check for potential typosquatting."""
         pkg_name = self.pkg_name.lower()
         
