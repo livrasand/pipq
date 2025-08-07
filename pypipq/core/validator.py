@@ -71,3 +71,52 @@ def validate_package(pkg_name: str, config: Config) -> Dict[str, Any]:
         "warnings": aggregated_warnings,
         "validator_results": validator_results,
     }
+
+class VulnerabilityValidator(BaseValidator):
+    """
+    Checks for known security vulnerabilities using the OSV.dev database.
+
+    OSV (Open Source Vulnerability) is a distributed vulnerability database
+    that includes data from the Python Advisory Database (PyPA) and others,
+    making it a comprehensive source.
+    """
+    name = "Vulnerability"
+    category = "Security"
+    description = "Checks for known vulnerabilities in public databases (OSV, PyPA)."
+
+    def _validate(self) -> None:
+        osv_api_url = "https://api.osv.dev/v1/query"
+        # FIX: Get the canonical package name from the metadata, not from a direct attribute.
+        # This makes the validator self-contained and consistent with others.
+        pkg_name = self.get_metadata_field("name")
+        version = self.get_metadata_field("version")
+
+        if not pkg_name:
+            self.add_warning("Could not determine package name from metadata, skipping vulnerability check.")
+            return
+        if not version:
+            self.add_warning(f"Could not determine version for '{pkg_name}', skipping vulnerability check.")
+            return
+
+        query = {"version": version, "package": {"name": pkg_name.lower(), "ecosystem": "PyPI"}}
+
+        try:
+            # Use a reasonable timeout for the API call
+            response = requests.post(osv_api_url, json=query, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data or not data.get("vulns"):
+                self.add_info("Vulnerability Scan (OSV)", f"No known vulnerabilities found for v{version}.")
+                return
+
+            # Report each vulnerability as a distinct error for clarity.
+            for vuln in data.get("vulns", []):
+                vuln_id = vuln.get("id", "N/A")
+                summary = vuln.get("summary", "No summary available.").strip()
+                self.add_error(f"Vulnerability found: {vuln_id} - {summary}")
+
+        except requests.exceptions.Timeout:
+            self.add_warning("Vulnerability check timed out while contacting the OSV database.")
+        except requests.exceptions.RequestException as e:
+            self.add_warning(f"Could not query the OSV vulnerability database: {e}")
