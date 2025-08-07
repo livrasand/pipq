@@ -17,7 +17,7 @@ class MaintainerValidator(BaseValidator):
     community support, indicating a higher risk of abandonment or sporadic updates.
     """
     
-    name = "Single Maintainer"
+    name = "Maintainer"
     category = "Quality"
     description = "Detects packages with a single maintainer or limited support"
     
