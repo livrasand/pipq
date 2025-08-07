@@ -1,14 +1,4 @@
 """
-Package validators (marshalls) for pypipq.
-
-This module contains all the security and quality validators that analyze
-packages before installation.
+Validators for pypipq.
+Each validator should inherit from BaseValidator.
 """
-
-# Import all validators here so they can be discovered dynamically
-from .typosquat import TyposquatValidator
-from .age import AgeValidator
-from .maintainer import MaintainerValidator
-from .vulnerability import VulnerabilityValidator
-
-__all__ = ["TyposquatValidator", "AgeValidator", "MaintainerValidator", "VulnerabilityValidator"]

@@ -1,91 +1,73 @@
 """
-Core validation system for pypipq.
-
-This module provides the main validation pipeline that analyzes packages
-before installation using dynamically loaded validators.
+Core validation pipeline for pypipq.
 """
-
-import importlib
+import os
 import pkgutil
 import inspect
-from typing import Dict, List, Any, Optional
-from .base_validator import BaseValidator
+from typing import List, Dict, Any, Type
+import requests
+
 from .config import Config
-from ..utils.pypi import fetch_package_metadata
+from .base_validator import BaseValidator
 
-def discover_validators(
-    config: Config, pkg_name: str, metadata: Dict[str, Any]
-) -> List[BaseValidator]:
+# We need to import the validators module so pkgutil can find it.
+from .. import validators as validators_package
+
+
+def discover_validators() -> List[Type[BaseValidator]]:
     """
-    Dynamically discover and instantiate all available validators.
+    Discover all validator classes in the 'validators' module.
+    
+    Returns:
+        A list of validator classes.
+    """
+    validators = []
+    
+    # Path to the validators directory
+    path = os.path.dirname(validators_package.__file__)
+
+    for _, name, _ in pkgutil.iter_modules([path]):
+        module = __import__(f"pypipq.validators.{name}", fromlist=["*"])
+        for item_name, item in inspect.getmembers(module, inspect.isclass):
+            if issubclass(item, BaseValidator) and item is not BaseValidator:
+                validators.append(item)
+    return validators
+
+
+def validate_package(pkg_name: str, config: Config) -> Dict[str, Any]:
+    """
+    Fetch package metadata and run all enabled validators.
     
     Args:
+        pkg_name: The name of the package to validate.
         config: The configuration object.
-        pkg_name: The name of the package being validated.
-        metadata: The package metadata from the PyPI API.
         
     Returns:
-        List of instantiated validator objects.
+        A dictionary with the aggregated validation results.
     """
-    all_validators = []
+    # 1. Fetch metadata from PyPI
+    pypi_url = config.get("pypi_url", "https://pypi.org/pypi/")
+    timeout = config.get("timeout", 30)
+    
     try:
-        from pypipq import validators
-        
-        for _, modname, _ in pkgutil.iter_modules(validators.__path__):
-            try:
-                mod = importlib.import_module(f"pypipq.validators.{modname}")
-                for _, obj in inspect.getmembers(mod, inspect.isclass):
-                    if issubclass(obj, BaseValidator) and obj is not BaseValidator:
-                        validator_name = obj.__name__.replace("Validator", "").lower()
-                        if config.is_validator_enabled(validator_name):
-                            all_validators.append(obj(pkg_name, metadata))
-            except Exception as e:
-                print(f"Warning: Could not load validator {modname}: {e}")
-                continue
-    except ImportError:
-        pass
-    
-    return all_validators
+        response = requests.get(f"{pypi_url}{pkg_name}/json", timeout=timeout)
+        response.raise_for_status()
+        metadata = response.json()
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Failed to fetch metadata for '{pkg_name}': {e}")
 
-def validate_package(package_name: str, config: Config) -> Dict[str, Any]:
-    """
-    Main validation function that analyzes a package before installation.
-    
-    Args:
-        package_name: Name of the package to validate.
-        config: The configuration object.
+    # 2. Discover and instantiate validators
+    all_validators = discover_validators()
+    enabled_validators = [v(pkg_name, metadata) for v in all_validators if config.is_validator_enabled(v.name)]
 
-    Returns:
-        Dictionary containing validation results.
-    """
-    print("Validating request...")
-    metadata = fetch_package_metadata(package_name)
-    if not metadata:
-        return {
-            "package": package_name,
-            "error": "Could not fetch package metadata from PyPI.",
-        }
+    # 3. Run validators and aggregate results
+    validator_results = [v.validate() for v in enabled_validators]
+    aggregated_errors = [err for res in validator_results for err in res.get("errors", [])]
+    aggregated_warnings = [warn for res in validator_results for warn in res.get("warnings", [])]
 
-    package_version = metadata.get("info", {}).get("version", "unknown")
-    validators = discover_validators(config, package_name, metadata)
-    results = {
-        "package": f"{package_name}=={package_version}",
-        "validators_run": len(validators),
-        "errors": [],
-        "warnings": [],
-        "info": {},
-        "validator_results": [],
+    return {
+        "package": pkg_name,
+        "errors": aggregated_errors,
+        "warnings": aggregated_warnings,
+        "validator_results": validator_results,
     }
-
-    for validator in validators:
-        try:
-            validator.validate()
-            val_result = validator.result()
-            results["validator_results"].append(val_result)
-            results["errors"].extend(val_result["errors"])
-            results["warnings"].extend(val_result["warnings"])
-            results["info"].update(val_result["info"])
-        except Exception as e:
-            results["errors"].append(f"Validator '{validator.name}' threw an exception: {e}")
-
-    return results
