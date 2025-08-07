@@ -46,7 +46,7 @@ def _parse_package_spec(package_spec: str) -> str:
 @click.pass_context
 def main(ctx: click.Context, version: bool, verbose: bool) -> None:
     """
-    pipq - A secure pip proxy inspired by npq.
+    pipq - A secure pip proxy inspired.
     
     Analyzes packages before installation to detect potential security issues.
     """
@@ -80,7 +80,7 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
     
     # If force flag is used, skip validation entirely
     if force:
-        console.print("[yellow]⚠️  Skipping validation (--force flag used)[/yellow]")
+        console.print("[yellow]Skipping validation (--force flag used)[/yellow]")
         _run_pip_install(packages)
         return
     
@@ -90,7 +90,7 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
         package_name = _parse_package_spec(package_spec)
         display_name = package_name
         
-        console.print(f"\n[bold blue]📦 Analyzing package: {display_name}[/bold blue]")
+        console.print(f"\n[bold blue]Analyzing package: {display_name}[/bold blue]")
         
         with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
             try:
@@ -100,7 +100,7 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
             except Exception as e:
                 spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
                 if not _should_continue_on_error(config_obj):
-                    console.print(f"[red]❌ Aborting installation due to analysis failure.[/red]")
+                    console.print(f"[red]Aborting installation due to analysis failure.[/red]")
                     sys.exit(1)
                 continue
     
@@ -110,7 +110,7 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
     if should_install:
         _run_pip_install(packages)
     else:
-        console.print("[yellow]📦 Installation cancelled.[/yellow]")
+        console.print("[yellow]Installation cancelled.[/yellow]")
         sys.exit(1)
 
 
@@ -127,7 +127,7 @@ def check(package: str, config: Optional[str]) -> None:
     package_name = _parse_package_spec(package)
     display_name = package_name
     
-    console.print(f"[bold blue]🔍 Analyzing package: {display_name}[/bold blue]")
+    console.print(f"[bold blue]Analyzing package: {display_name}[/bold blue]")
     
     with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
         try:
@@ -135,7 +135,7 @@ def check(package: str, config: Optional[str]) -> None:
             spinner.succeed(f"Analysis complete for {display_name}")
         except Exception as e:
             spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
-            console.print(f"[red]❌ Could not analyze package: {str(e)}[/red]")
+            console.print(f"[red]Could not analyze package: {str(e)}[/red]")
             sys.exit(1)
     
     _display_results([results], show_summary=False)
@@ -156,7 +156,7 @@ def _display_results_and_get_confirmation(all_results: List[dict], config: Confi
     
     # Check if we should block installation
     if has_errors and config.should_block():
-        console.print("[red]🚫 Installation blocked due to security errors.[/red]")
+        console.print("[red]Installation blocked due to security errors.[/red]")
         return False
     
     # Check if we need user confirmation
@@ -164,19 +164,19 @@ def _display_results_and_get_confirmation(all_results: List[dict], config: Confi
         return True
     
     if not has_errors and not has_warnings:
-        console.print("[green]✅ No issues found. Proceeding with installation.[/green]")
+        console.print("[green]No issues found. Proceeding with installation.[/green]")
         return True
     
     if has_warnings and config.should_auto_continue():
-        console.print("[yellow]⚠️  Warnings found, but auto-continuing as configured.[/yellow]")
+        console.print("[yellow]Warnings found, but auto-continuing as configured.[/yellow]")
         return True
     
     # Prompt user for confirmation
     if has_errors:
-        message = "❗ Security errors found. Do you want to continue anyway?"
+        message = "Security errors found. Do you want to continue anyway?"
         default = False
     else:
-        message = "⚠️  Warnings found. Do you want to continue with installation?"
+        message = "Warnings found. Do you want to continue with installation?"
         default = True
     
     return click.confirm(message, default=default)
@@ -192,10 +192,10 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
         validator_results = results.get("validator_results", [])
         
         if not errors and not warnings and not validator_results:
-            console.print(f"[green]✅ {package_name}: No issues found[/green]")
+            console.print(f"[green]{package_name}: No issues found[/green]")
             continue
         
-        console.print(f"\n[bold blue]📦 Results for: {package_name}[/bold blue]")
+        console.print(f"\n[bold blue]Results for: {package_name}[/bold blue]")
 
         # Display aggregated errors and warnings
         if errors or warnings:
@@ -260,7 +260,7 @@ def _run_pip_install(packages: List[str]) -> None:
     Args:
         packages: List of package names to install
     """
-    console.print(f"[bold green]🚀 Installing packages: {', '.join(packages)}[/bold green]")
+    console.print(f"[bold green]Installing packages: {', '.join(packages)}[/bold green]")
     
     # Build pip command
     pip_cmd = [sys.executable, "-m", "pip", "install"] + list(packages)
@@ -268,12 +268,12 @@ def _run_pip_install(packages: List[str]) -> None:
     try:
         # Run pip install and stream output
         result = subprocess.run(pip_cmd, check=True, capture_output=False)
-        console.print("[green]✅ Installation completed successfully![/green]")
+        console.print("[green]Installation completed successfully![/green]")
     except subprocess.CalledProcessError as e:
-        console.print(f"[red]❌ pip install failed with exit code {e.returncode}[/red]")
+        console.print(f"[red]pip install failed with exit code {e.returncode}[/red]")
         sys.exit(e.returncode)
     except KeyboardInterrupt:
-        console.print("\\n[yellow]⏹️  Installation interrupted by user[/yellow]")
+        console.print("\\n[yellow]Installation interrupted by user[/yellow]")
         sys.exit(1)
 
 
