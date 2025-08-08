@@ -44,6 +44,8 @@ pipq install --silent package-name
 * **License Validation**: Detects missing or problematic licenses
 * **Integrity Validation**: Verifies secure URLs and presence of hashes (SHA256/MD5)
 * **Vulnerability Validator**: Checks for known vulnerabilities using the OSV (Open Source Vulnerabilities) database with local caching.
+* **Malware Detection (Metadata)**: Scans package URLs and hashes against VirusTotal and Hybrid Analysis to detect potential malware without downloading the package.
+* **Malware Detection (Sandbox)**: Downloads packages to an isolated sandbox environment and scans them for malware using the VirusTotal API.
 
 #### User Experience
 
@@ -72,7 +74,23 @@ Or use environment variables:
 ```bash
 export PIPQ_MODE=block
 export PIPQ_DISABLE_VALIDATORS=age,maintainer
+
+# API keys for MalwareValidator
+export VIRUSTOTAL_API_KEY="your_virustotal_api_key"
 ```
+
+### Getting a VirusTotal API Key
+
+To use the malware scanning features, you need a free VirusTotal API key. Here's how to get one:
+
+1.  **Create a free account** on the [VirusTotal website](https://www.virustotal.com/gui/join-us).
+2.  **Sign in** to your account.
+3.  Click on your **username** in the top right corner and select **API Key**.
+4.  Copy your API key and set it as an environment variable:
+
+    ```bash
+    export VIRUSTOTAL_API_KEY="your_new_api_key"
+    ```
 
 ## Installation Workflow
 
