@@ -8,33 +8,11 @@ A secure pip proxy that analyzes Python packages before installation to detect p
 
 pipq is a command-line tool that acts as a security layer between you and pip. It intercepts package installation requests, analyzes packages for potential security threats, and provides warnings or blocks installation based on configurable security policies.
 
-## Key Functionality
-
-- **Zero‑setup installation** – a single (or ) gets you started `pip install pypipq`
-
-### Package Analysis
-- **Typosquatting Detection**: Identifies packages with names similar to popular packages that might be masquerading as legitimate libraries
-- **Package Age Validation**: Flags packages that are suspiciously new (potential supply chain attacks) or very old without updates (potential abandonment)
-- **Maintainer Analysis**: Detects packages maintained by a single individual, indicating higher risk of abandonment
-
-### User Experience
-- Rich terminal interface with colored output and progress indicators
-- Interactive prompts for security decisions
-- Multiple operation modes: silent, warn, or block
-- Comprehensive configuration system via TOML files and environment variables
-
-### Installation Workflow
-```bash
-pipq install requests           # Analyze and install if safe
-pipq check suspicious-package   # Analyze without installing
-pipq install --force package    # Skip analysis entirely
-```
-
 ## Installation
 
 ```bash
 pip install pypipq
-```
+````
 
 ## Usage
 
@@ -54,6 +32,29 @@ pipq install --force some-package
 pipq install --silent package-name
 ```
 
+## Key Functionality
+
+### Implemented and Operational
+
+#### Package Analysis
+
+* **Typosquatting Detection**: Identifies packages with names similar to popular packages that might be masquerading as legitimate libraries
+* **Package Age Validation**: Flags packages that are suspiciously new (potential supply chain attacks) or very old without updates (potential abandonment)
+* **Maintainer Analysis**: Detects packages maintained by a single individual, indicating higher risk of abandonment
+* **License Validation**: Detects missing or problematic licenses
+* **Integrity Validation**: Verifies secure URLs and presence of hashes (SHA256/MD5)
+
+#### User Experience
+
+* Rich terminal interface with colored output and progress indicators
+* Interactive prompts for security decisions
+* Multiple operation modes: silent, warn, or block
+* Comprehensive configuration system via TOML files and environment variables
+
+### Partially Implemented
+
+* **Vulnerability Validator**: Integration with OSV API exists but is incomplete and contains duplicate/unused logic
+
 ## Configuration
 
 Create `~/.config/pipq/config.toml`:
@@ -66,9 +67,18 @@ timeout = 30
 ```
 
 Or use environment variables:
+
 ```bash
 export PIPQ_MODE=block
 export PIPQ_DISABLE_VALIDATORS=age,maintainer
+```
+
+## Installation Workflow
+
+```bash
+pipq install requests           # Analyze and install if safe
+pipq check suspicious-package   # Analyze without installing
+pipq install --force package    # Skip analysis entirely
 ```
 
 ## Architecture
@@ -77,27 +87,29 @@ pipq uses a modular validator system where each security check is implemented as
 
 ## Current Limitations
 
-- **No code analysis**: Does not inspect actual package source code
-- **No malware detection**: Cannot detect malicious code within packages  
-- **No vulnerability database**: Does not check against known CVE databases
-- **Metadata-only analysis**: Relies solely on PyPI metadata for validation
+* **No code analysis**: Does not inspect actual package source code
+* **No malware detection**: Cannot detect malicious code within packages
+* **No vulnerability database**: Does not check against known CVE databases
+* **Metadata-only analysis**: Relies solely on PyPI metadata for validation
 
 ## Planned Features
 
 ### Enhanced Security Validation
-- Integration with vulnerability databases (OSV, Safety DB, Python Advisory Database)
-- Static code analysis for suspicious patterns in setup.py and package code
-- Malware detection using known malicious code signatures
-- Dependency chain analysis for deep dependency risks
+
+* Integration with vulnerability databases (OSV, Safety DB, Python Advisory Database)
+* Static code analysis for suspicious patterns in setup.py and package code
+* Malware detection using known malicious code signatures
+* Dependency chain analysis for deep dependency risks
 
 ### Advanced Analysis
-- Package integrity verification using cryptographic signatures
-- Repository activity analysis (GitHub stars, commit frequency, contributor count)
-- License compatibility checking
-- Download statistics and popularity metrics validation
+
+* Package integrity verification using cryptographic signatures
+* Repository activity analysis (GitHub stars, commit frequency, contributor count)
+* License compatibility checking
+* Download statistics and popularity metrics validation
 
 ### Improved User Experience
-- Caching system for package metadata to improve performance
-- Offline mode with local vulnerability database
-- Integration with virtual environments and requirements.txt files
-- Detailed reporting and audit trails
+
+* Caching system for package metadata to improve performance
+* Integration with virtual environments and requirements.txt files
+* Detailed reporting and audit trails
