@@ -43,6 +43,7 @@ pipq install --silent package-name
 * **Maintainer Analysis**: Detects packages maintained by a single individual, indicating higher risk of abandonment
 * **License Validation**: Detects missing or problematic licenses
 * **Integrity Validation**: Verifies secure URLs and presence of hashes (SHA256/MD5)
+* **Vulnerability Validator**: Checks for known vulnerabilities using the OSV (Open Source Vulnerabilities) database with local caching.
 
 #### User Experience
 
@@ -53,7 +54,7 @@ pipq install --silent package-name
 
 ### Partially Implemented
 
-* **Vulnerability Validator**: Integration with OSV API exists but is incomplete and contains duplicate/unused logic
+* **Vulnerability scanning**: While OSV integration is functional, planned integrations with Safety DB and the Python Advisory Database are not yet implemented.
 
 ## Configuration
 
@@ -89,7 +90,6 @@ pipq uses a modular validator system where each security check is implemented as
 
 * **No code analysis**: Does not inspect actual package source code
 * **No malware detection**: Cannot detect malicious code within packages
-* **No vulnerability database**: Does not check against known CVE databases
 * **Metadata-only analysis**: Relies solely on PyPI metadata for validation
 
 ## Planned Features
