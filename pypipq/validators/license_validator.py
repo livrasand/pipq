@@ -3,7 +3,8 @@ Validator to analyze package licenses.
 """
 import re
 from ..core.base_validator import BaseValidator
-
+from ..core.config import Config
+from typing import Dict, Any
 
 class LicenseValidator(BaseValidator):
     """
@@ -13,11 +14,11 @@ class LicenseValidator(BaseValidator):
     category = "Legal & Compliance"
     description = "Checks for missing, ambiguous, or restrictive licenses."
 
-    # This list could be moved to config.toml for user customization.
-    # It identifies licenses that have strong "copyleft" or "viral" effects.
-    RESTRICTIVE_LICENSES = [
-        "AGPL", "GPL", "Affero", "General Public License", "LGPL"
-    ]
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
+        self.RESTRICTIVE_LICENSES = self.config.get("validators.License.restrictive_licenses", [
+            "AGPL", "GPL", "Affero", "General Public License", "LGPL"
+        ])
 
     def _validate(self) -> None:
         info = self.get_metadata_field("info", {})

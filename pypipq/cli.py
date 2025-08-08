@@ -1,5 +1,5 @@
 """
-Command-line interface for pypipq.
+Command-line interface for pipq.
 
 This module provides the main entry point for the pipq command.
 """
@@ -101,7 +101,7 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
             except Exception as e:
                 spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
                 if not _should_continue_on_error(config_obj):
-                    console.print(f"[red]Aborting installation due to analysis failure.[/red]")
+                    console.print(f"[red]Aborting installation due to ana               lysis failure.[/red]")
                     sys.exit(1)
                 continue
     
@@ -120,7 +120,8 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
 @click.option("--config", type=click.Path(exists=True), help="Path to config file")
 @click.option("--json", "json_output", is_flag=True, help="Output results in JSON format")
 @click.option("--md", "md_output", is_flag=True, help="Output results in Markdown format")
-def check(packages: List[str], config: Optional[str], json_output: bool, md_output: bool) -> None:
+@click.option("--html", "html_output", is_flag=True, help="Output results in HTML format")
+def check(packages: List[str], config: Optional[str], json_output: bool, md_output: bool, html_output: bool) -> None:
     """
     Check one or more packages without installing them.
     
@@ -148,49 +149,74 @@ def check(packages: List[str], config: Optional[str], json_output: bool, md_outp
         console.print(json.dumps(all_results, indent=4))
     elif md_output:
         console.print(_format_results_as_markdown(all_results))
+    elif html_output:
+        console.print(_format_results_as_html(all_results))
     else:
         _display_results(all_results, show_summary=False)
 
 
-def _display_results_and_get_confirmation(all_results: List[dict], config: Config) -> bool:
-    """
-    Display validation results and get user confirmation if needed.
-    
-    Returns:
-        True if installation should proceed, False otherwise
-    """
-    has_errors = any(result["errors"] for result in all_results)
-    has_warnings = any(result["warnings"] for result in all_results)
-    
-    # Display results
-    _display_results(all_results)
-    
-    # Check if we should block installation
-    if has_errors and config.should_block():
-        console.print("[red]Installation blocked due to security errors.[/red]")
-        return False
-    
-    # Check if we need user confirmation
-    if config.get("mode") == "silent":
-        return True
-    
-    if not has_errors and not has_warnings:
-        console.print("[green]No issues found. Proceeding with installation.[/green]")
-        return True
-    
-    if has_warnings and config.should_auto_continue():
-        console.print("[yellow]Warnings found, but auto-continuing as configured.[/yellow]")
-        return True
-    
-    # Prompt user for confirmation
-    if has_errors:
-        message = "Security errors found. Do you want to continue anyway?"
-        default = False
-    else:
-        message = "Warnings found. Do you want to continue with installation?"
-        default = True
-    
-    return click.confirm(message, default=default)
+def _format_results_as_markdown(all_results: List[dict]) -> str:
+    """Format validation results as a Markdown string."""
+    markdown = ""
+    for results in all_results:
+        package_name = results["package"]
+        errors = results.get("errors", [])
+        warnings = results.get("warnings", [])
+        validator_results = results.get("validator_results", [])
+
+        markdown += f"# Results for: {package_name}\n\n"
+
+        # Summary Table
+        markdown += "| Validator | Category | Status |\n"
+        markdown += "| --- | --- | --- |\n"
+        for val_result in validator_results:
+            val_name = val_result["name"]
+            val_category = val_result["category"]
+            status = "Passed"
+            if val_result["errors"]:
+                status = "Failed"
+            elif val_result["warnings"]:
+                status = "Warning"
+            markdown += f"| {val_name} | {val_category} | {status} |\n"
+        markdown += "\n"
+
+        # Issues Table
+        if errors or warnings:
+            markdown += "| Type | Message |\n"
+            markdown += "| --- | --- |\n"
+            for error in errors:
+                markdown += f"| ERROR | {error} |\n"
+            for warning in warnings:
+                markdown += f"| WARNING | {warning} |\n"
+            markdown += "\n"
+
+        # Detailed Validator Results
+        for val_result in validator_results:
+            val_name = val_result["name"]
+            val_category = val_result["category"]
+            val_errors = val_result["errors"]
+            val_warnings = val_result["warnings"]
+            val_info = val_result["info"]
+
+            if val_errors or val_warnings or val_info:
+                markdown += f"## Validator: {val_name} ({val_category})\n\n"
+                markdown += "| Type | Message |\n"
+                markdown += "| --- | --- |\n"
+                for err in val_errors:
+                    markdown += f"| ERROR | {err} |\n"
+                for warn in val_warnings:
+                    markdown += f"| WARNING | {warn} |\n"
+                for key, value in val_info.items():
+                    markdown += f"| INFO | {key}: {value} |\n"
+                markdown += "\n"
+    return markdown
+
+
+def _format_results_as_html(all_results: List[dict]) -> str:
+    """Format validation results as an HTML string."""
+    # This is a placeholder for a more sophisticated HTML report.
+    # For now, we'll just dump the JSON into a <pre> tag.
+    return f"<pre>{json.dumps(all_results, indent=4)}</pre>"
 
 
 def _display_results(all_results: List[dict], show_summary: bool = True) -> None:
@@ -276,6 +302,34 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
                 console.print(Panel(summary_text, style="red", title="Security Summary"))
             else:
                 console.print(Panel(summary_text, style="yellow", title="Security Summary"))
+
+
+def _display_results_and_get_confirmation(all_results: List[dict], config: Config) -> bool:
+    """Display validation results and get user confirmation to install."""
+    _display_results(all_results, show_summary=True)
+
+    total_errors = sum(len(r.get("errors", [])) for r in all_results)
+    total_warnings = sum(len(r.get("warnings", [])) for r in all_results)
+    mode = config.get("mode", "interactive")
+
+    if total_errors > 0:
+        console.print("[red]Installation aborted due to critical errors.[/red]")
+        return False
+
+    if mode == "silent":
+        return True
+
+    if mode == "block":
+        if total_warnings > 0:
+            console.print("[red]Installation aborted due to warnings (block mode).[/red]")
+            return False
+        return True
+
+    # Interactive mode
+    if total_warnings > 0:
+        console.print(f"[yellow]Found {total_warnings} warning(s).[/yellow]")
+
+    return click.confirm("Do you want to proceed with the installation?")
 
 
 def _should_continue_on_error(config: Config) -> bool:

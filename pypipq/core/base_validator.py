@@ -3,7 +3,10 @@ Base validator class that all security checks inherit from.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .config import Config
 
 
 class BaseValidator(ABC):
@@ -19,16 +22,18 @@ class BaseValidator(ABC):
     category: str = "General"
     description: str = "No description provided"
     
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any]) -> None:
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: "Config") -> None:
         """
         Initialize the validator with package information.
         
         Args:
             pkg_name: Name of the package being validated
             metadata: Package metadata from PyPI API
+            config: The configuration object.
         """
         self.pkg_name = pkg_name
         self.metadata = metadata
+        self.config = config
         self.errors: List[str] = []
         self.warnings: List[str] = []
         self.info: Dict[str, Any] = {}

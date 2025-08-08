@@ -3,7 +3,8 @@ Validator for package popularity.
 """
 import requests
 from ..core.base_validator import BaseValidator
-
+from ..core.config import Config
+from typing import Dict, Any
 
 class PopularityValidator(BaseValidator):
     """
@@ -12,6 +13,9 @@ class PopularityValidator(BaseValidator):
     name = "Popularity"
     category = "Community"
     description = "Checks the popularity of a package."
+
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
 
     def _validate(self) -> None:
         api_url = f"https://api.pepy.tech/api/v2/projects/{self.pkg_name}"

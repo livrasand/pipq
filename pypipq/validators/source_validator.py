@@ -4,7 +4,8 @@ Validator for source code repository health.
 import re
 import requests
 from ..core.base_validator import BaseValidator
-
+from ..core.config import Config
+from typing import Dict, Any
 
 class SourceValidator(BaseValidator):
     """
@@ -13,6 +14,9 @@ class SourceValidator(BaseValidator):
     name = "Source"
     category = "Community"
     description = "Checks the health of the source code repository."
+
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
 
     def _validate(self) -> None:
         project_urls = self.get_metadata_field("project_urls", {})

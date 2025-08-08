@@ -2,7 +2,8 @@
 Validator to check package integrity based on PyPI metadata.
 """
 from ..core.base_validator import BaseValidator
-
+from ..core.config import Config
+from typing import Dict, Any
 
 class IntegrityValidator(BaseValidator):
     """
@@ -11,6 +12,9 @@ class IntegrityValidator(BaseValidator):
     name = "Integrity"
     category = "Package Integrity"
     description = "Checks for checksums, GPG signatures, and secure download URLs."
+
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
 
     def _validate(self) -> None:
         releases = self.metadata.get("releases", {})

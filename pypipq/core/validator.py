@@ -34,17 +34,27 @@ def discover_validators() -> List[Type[BaseValidator]]:
     return validators
 
 
-def validate_package(pkg_name: str, config: Config) -> Dict[str, Any]:
+def validate_package(pkg_name: str, config: Config, validated_packages: set = None, depth: int = 0) -> Dict[str, Any]:
     """
     Fetch package metadata and run all enabled validators.
     
     Args:
         pkg_name: The name of the package to validate.
         config: The configuration object.
+        validated_packages: A set of already validated packages to avoid infinite recursion.
+        depth: The current recursion depth.
         
     Returns:
         A dictionary with the aggregated validation results.
     """
+    if validated_packages is None:
+        validated_packages = set()
+
+    if pkg_name in validated_packages or depth > config.get("max_recursion_depth", 3):
+        return {}
+
+    validated_packages.add(pkg_name)
+
     # 1. Fetch metadata from PyPI
     pypi_url = config.get("pypi_url", "https://pypi.org/pypi/")
     timeout = config.get("timeout", 30)
@@ -58,16 +68,29 @@ def validate_package(pkg_name: str, config: Config) -> Dict[str, Any]:
 
     # 2. Discover and instantiate validators
     all_validators = discover_validators()
-    enabled_validators = [v(pkg_name, metadata) for v in all_validators if config.is_validator_enabled(v.name)]
+    enabled_validators = [v(pkg_name, metadata, config) for v in all_validators if config.is_validator_enabled(v.name)]
 
     # 3. Run validators and aggregate results
     validator_results = [v.validate() for v in enabled_validators]
     aggregated_errors = [err for res in validator_results for err in res.get("errors", [])]
     aggregated_warnings = [warn for res in validator_results for warn in res.get("warnings", [])]
 
+    # 4. Recursively validate dependencies
+    dependencies = []
+    for res in validator_results:
+        if res.get("info", {}).get("dependencies"):
+            dependencies.extend(res["info"]["dependencies"])
+
+    dependency_results = []
+    for dep in dependencies:
+        dep_results = validate_package(dep, config, validated_packages, depth + 1)
+        if dep_results:
+            dependency_results.append(dep_results)
+
     return {
         "package": pkg_name,
         "errors": aggregated_errors,
         "warnings": aggregated_warnings,
         "validator_results": validator_results,
+        "dependencies": dependency_results
     }

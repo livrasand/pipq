@@ -2,7 +2,8 @@
 Validator for GPG signatures.
 """
 from ..core.base_validator import BaseValidator
-
+from ..core.config import Config
+from typing import Dict, Any
 
 class GPGValidator(BaseValidator):
     """
@@ -11,6 +12,9 @@ class GPGValidator(BaseValidator):
     name = "GPG"
     category = "Security"
     description = "Checks for GPG signatures in package releases."
+
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
 
     def _validate(self) -> None:
         releases = self.get_metadata_field("releases", {})

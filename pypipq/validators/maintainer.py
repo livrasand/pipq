@@ -7,7 +7,8 @@ and higher risk of abandonment.
 
 from typing import Dict
 from ..core.base_validator import BaseValidator
-
+from ..core.config import Config
+from typing import Dict, Any
 
 class MaintainerValidator(BaseValidator):
     """
@@ -21,6 +22,9 @@ class MaintainerValidator(BaseValidator):
     category = "Quality"
     description = "Detects packages with a single maintainer or limited support"
     
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
+
     def _validate(self) -> None:
         """Check if the package is maintained by a single individual."""
         

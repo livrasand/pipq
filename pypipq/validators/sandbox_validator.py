@@ -5,6 +5,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from ..core.base_validator import BaseValidator
+from ..core.config import Config
 from typing import Dict, Any
 
 class SandboxValidator(BaseValidator):
@@ -24,10 +25,10 @@ class SandboxValidator(BaseValidator):
     VIRUSTOTAL_API_URL_FILE_SCAN = "https://www.virustotal.com/vtapi/v2/file/scan"
     VIRUSTOTAL_API_URL_FILE_REPORT = "https://www.virustotal.com/vtapi/v2/file/report"
 
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any]):
-        super().__init__(pkg_name, metadata)
-        self.virustotal_api_key = os.environ.get("VIRUSTOTAL_API_KEY")
-        self.timeout = 120  # Increased timeout for file uploads
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
+        self.virustotal_api_key = self.config.get("api_keys.virustotal")
+        self.timeout = self.config.get("validators.Sandbox.timeout", 120)
 
     def _validate(self) -> None:
         if not self.virustotal_api_key:

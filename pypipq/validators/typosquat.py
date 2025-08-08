@@ -8,7 +8,7 @@ attempting to masquerade as legitimate packages.
 import difflib
 from typing import Dict, Any, List
 from ..core.base_validator import BaseValidator
-
+from ..core.config import Config
 
 class TyposquatValidator(BaseValidator):
     """
@@ -22,18 +22,19 @@ class TyposquatValidator(BaseValidator):
     category = "Security"
     description = "Detects packages with names similar to popular packages"
     
-    # Popular packages that are commonly typo-squatted
-    POPULAR_PACKAGES = {
-        "requests", "urllib3", "setuptools", "certifi", "numpy", "pandas",
-        "matplotlib", "scipy", "pillow", "cryptography", "pytz", "six",
-        "python-dateutil", "pyyaml", "click", "jinja2", "markupsafe",
-        "werkzeug", "flask", "django", "sqlalchemy", "psycopg2", "pymongo",
-        "redis", "boto3", "botocore", "awscli", "docker", "kubernetes",
-        "tensorflow", "torch", "scikit-learn", "beautifulsoup4", "lxml",
-        "selenium", "pytest", "coverage", "tox", "black", "flake8", "mypy",
-        "isort", "pre-commit", "pipenv", "poetry", "wheel", "twine",
-    }
-    
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
+        self.POPULAR_PACKAGES = self.config.get("validators.Typosquat.popular_packages", {
+            "requests", "urllib3", "setuptools", "certifi", "numpy", "pandas",
+            "matplotlib", "scipy", "pillow", "cryptography", "pytz", "six",
+            "python-dateutil", "pyyaml", "click", "jinja2", "markupsafe",
+            "werkzeug", "flask", "django", "sqlalchemy", "psycopg2", "pymongo",
+            "redis", "boto3", "botocore", "awscli", "docker", "kubernetes",
+            "tensorflow", "torch", "scikit-learn", "beautifulsoup4", "lxml",
+            "selenium", "pytest", "coverage", "tox", "black", "flake8", "mypy",
+            "isort", "pre-commit", "pipenv", "poetry", "wheel", "twine",
+        })
+
     def _validate(self) -> None:
         """Check for potential typosquatting."""
         pkg_name = self.pkg_name.lower()

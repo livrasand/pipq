@@ -8,6 +8,7 @@ or very old/abandoned (potential security risks).
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from ..core.base_validator import BaseValidator
+from ..core.config import Config
 
 
 class AgeValidator(BaseValidator):
@@ -24,10 +25,11 @@ class AgeValidator(BaseValidator):
     category = "Quality"
     description = "Checks package age and release patterns"
     
-    # Thresholds for age-based warnings
-    NEW_PACKAGE_DAYS = 7      # Warn if package is less than this many days old
-    OLD_PACKAGE_DAYS = 365 * 2  # Warn if no updates for this many days
-    
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+        super().__init__(pkg_name, metadata, config)
+        self.NEW_PACKAGE_DAYS = self.config.get("validators.Age.new_package_days", 7)
+        self.OLD_PACKAGE_DAYS = self.config.get("validators.Age.old_package_days", 365 * 2)
+
     def _validate(self) -> None:
         """Check package age and release patterns."""
         upload_time = self._get_upload_time()
