@@ -3,6 +3,7 @@ Command-line interface for pypipq.
 
 This module provides the main entry point for the pipq command.
 """
+import json
 import os
 import sys
 import io
@@ -41,8 +42,8 @@ def _parse_package_spec(package_spec: str) -> str:
 
 
 @click.group(invoke_without_command=True)
-@click.option("--version", is_flag=True, help="Show version and exit")
-@click.option("--verbose", "-v", is_flag=True, help="Verbose output")
+@click.option("--version", "-v", is_flag=True, help="Show version and exit")
+@click.option("--verbose",  is_flag=True, help="Verbose output")
 @click.pass_context
 def main(ctx: click.Context, version: bool, verbose: bool) -> None:
     """
@@ -115,30 +116,40 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
 
 
 @main.command()
-@click.argument("package", required=True)
+@click.argument("packages", nargs=-1, required=True)
 @click.option("--config", type=click.Path(exists=True), help="Path to config file")
-def check(package: str, config: Optional[str]) -> None:
+@click.option("--json", "json_output", is_flag=True, help="Output results in JSON format")
+@click.option("--md", "md_output", is_flag=True, help="Output results in Markdown format")
+def check(packages: List[str], config: Optional[str], json_output: bool, md_output: bool) -> None:
     """
-    Check a package without installing it.
+    Check one or more packages without installing them.
     
-    PACKAGE: Package name to analyze (can include version with ==)
+    PACKAGES: One or more package names to analyze (can include versions with ==)
     """
     config_obj = Config(config_path=config)
-    package_name = _parse_package_spec(package)
-    display_name = package_name
+    all_results = []
+    for package_spec in packages:
+        package_name = _parse_package_spec(package_spec)
+        display_name = package_name
+        
+        console.print(f"[bold blue]Analyzing package: {display_name}[/bold blue]")
+        
+        with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
+            try:
+                results = validate_package(package_name, config_obj)
+                all_results.append(results)
+                spinner.succeed(f"Analysis complete for {display_name}")
+            except Exception as e:
+                spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
+                console.print(f"[red]Could not analyze package: {str(e)}[/red]")
+                continue
     
-    console.print(f"[bold blue]Analyzing package: {display_name}[/bold blue]")
-    
-    with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
-        try:
-            results = validate_package(package_name, config_obj)
-            spinner.succeed(f"Analysis complete for {display_name}")
-        except Exception as e:
-            spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
-            console.print(f"[red]Could not analyze package: {str(e)}[/red]")
-            sys.exit(1)
-    
-    _display_results([results], show_summary=False)
+    if json_output:
+        console.print(json.dumps(all_results, indent=4))
+    elif md_output:
+        console.print(_format_results_as_markdown(all_results))
+    else:
+        _display_results(all_results, show_summary=False)
 
 
 def _display_results_and_get_confirmation(all_results: List[dict], config: Config) -> bool:
