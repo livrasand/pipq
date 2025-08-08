@@ -197,6 +197,25 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
         
         console.print(f"\n[bold blue]Results for: {package_name}[/bold blue]")
 
+        # Display summary of validators
+        summary_table = Table(title=f"Validators Summary for {package_name}")
+        summary_table.add_column("Validator", style="bold")
+        summary_table.add_column("Category", style="bold")
+        summary_table.add_column("Status", style="bold")
+
+        for val_result in validator_results:
+            val_name = val_result["name"]
+            val_category = val_result["category"]
+            status = "[green]Passed[/green]"
+            if val_result["errors"]:
+                status = "[red]Failed[/red]"
+            elif val_result["warnings"]:
+                status = "[yellow]Warning[/yellow]"
+            summary_table.add_row(val_name, val_category, status)
+        
+        console.print(summary_table)
+        console.print()
+
         # Display aggregated errors and warnings
         if errors or warnings:
             table = Table(title=f"Aggregated Issues for {package_name}")

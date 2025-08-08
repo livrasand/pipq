@@ -9,8 +9,18 @@ from typing import Dict, Any
 
 class SandboxValidator(BaseValidator):
     """
-    Validator that downloads a package to a sandbox and scans it with VirusTotal.
+    Validator that scans a package distribution file for malware using VirusTotal.
+
+    This validator downloads the latest release files of a package into a temporary
+    sandboxed directory, uploads them to VirusTotal, and analyzes the resulting report
+    to detect known malware signatures. It flags the package if any detections are found.
     """
+
+    name = "Sandbox"
+    category = "Security"
+    description = "Scans package files for malware using VirusTotal sandbox analysis"
+
+    # VirusTotal API endpoints
     VIRUSTOTAL_API_URL_FILE_SCAN = "https://www.virustotal.com/vtapi/v2/file/scan"
     VIRUSTOTAL_API_URL_FILE_REPORT = "https://www.virustotal.com/vtapi/v2/file/report"
 
