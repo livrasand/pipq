@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pypipq"
-version = "0.2.0"
+version = "0.3.0"
 description = "A secure pip proxy that analyzes Python packages before installation to detect potential security issues and risks."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -34,7 +34,9 @@ dependencies = [
     "requests>=2.25.0",
     "packaging>=21.0",
     "tomli>=1.2.0; python_version<'3.11'",
-    
+    "python-whois>=0.9.5",
+    "python-gnupg>=0.5.5",
+    "portalocker>=2.0.0",
 ]
 
 [project.optional-dependencies]

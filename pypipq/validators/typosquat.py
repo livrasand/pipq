@@ -6,7 +6,8 @@ attempting to masquerade as legitimate packages.
 """
 
 import difflib
-from typing import Dict, Any, List
+import re
+from typing import Dict, Any, List, Optional
 from ..core.base_validator import BaseValidator
 from ..core.config import Config
 
@@ -22,9 +23,9 @@ class TyposquatValidator(BaseValidator):
     category = "Security"
     description = "Detects packages with names similar to popular packages"
     
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
-        super().__init__(pkg_name, metadata, config)
-        self.POPULAR_PACKAGES = self.config.get("validators.Typosquat.popular_packages", {
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, extracted_path: Optional[str] = None, downloaded_file_path: Optional[str] = None) -> None:
+        super().__init__(pkg_name, metadata, config, extracted_path=extracted_path, downloaded_file_path=downloaded_file_path)
+        self.popular_packages = self.config.get("validators.Typosquat.popular_packages", {
             "requests", "urllib3", "setuptools", "certifi", "numpy", "pandas",
             "matplotlib", "scipy", "pillow", "cryptography", "pytz", "six",
             "python-dateutil", "pyyaml", "click", "jinja2", "markupsafe",
@@ -34,18 +35,30 @@ class TyposquatValidator(BaseValidator):
             "selenium", "pytest", "coverage", "tox", "black", "flake8", "mypy",
             "isort", "pre-commit", "pipenv", "poetry", "wheel", "twine",
         })
+        self.whitelist = self.config.get("validators.Typosquat.whitelist", [
+            # Legitimate packages that are often flagged as typosquats
+            r"django-.*",
+            r"flask-.*",
+            r"pytest-.*",
+        ])
 
     def _validate(self) -> None:
         """Check for potential typosquatting."""
         pkg_name = self.pkg_name.lower()
         
         # Skip validation for packages that are actually popular
-        if pkg_name in self.POPULAR_PACKAGES:
+        if pkg_name in self.popular_packages:
             return
+
+        # Skip validation for whitelisted packages
+        for pattern in self.whitelist:
+            if re.fullmatch(pattern, pkg_name):
+                self.add_info("Typosquat Check", f"'{pkg_name}' is whitelisted.")
+                return
         
         suspicious_matches = []
         
-        for popular_pkg in self.POPULAR_PACKAGES:
+        for popular_pkg in self.popular_packages:
             similarity = self._calculate_similarity(pkg_name, popular_pkg)
             
             # Check for high similarity (potential typosquatting)
@@ -74,11 +87,6 @@ class TyposquatValidator(BaseValidator):
                     f"Package name '{self.pkg_name}' is similar to popular package "
                     f"'{top_match['target']}' ({top_match['similarity']:.0%} similarity). "
                     f"Please verify this is the intended package."
-                )
-            else:  # Moderate similarity
-                self.add_warning(
-                    f"Package name '{self.pkg_name}' has some similarity to "
-                    f"'{top_match['target']}'. Double-check the package name."
                 )
             
             # Add info about all suspicious matches

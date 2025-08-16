@@ -42,10 +42,11 @@ pipq install --silent package-name
 * **Package Age Validation**: Flags packages that are suspiciously new (potential supply chain attacks) or very old without updates (potential abandonment)
 * **Maintainer Analysis**: Detects packages maintained by a single individual, indicating higher risk of abandonment
 * **License Validation**: Detects missing or problematic licenses
-* **Integrity Validation**: Verifies secure URLs and presence of hashes (SHA256/MD5)
-* **Vulnerability Validator**: Checks for known vulnerabilities using the OSV (Open Source Vulnerabilities) database with local caching.
-* **Malware Detection (Metadata)**: Scans package URLs and hashes against VirusTotal and Hybrid Analysis to detect potential malware without downloading the package.
-* **Malware Detection (Sandbox)**: Downloads packages to an isolated sandbox environment and scans them for malware using the VirusTotal API.
+* **Integrity Validation**: Verifies package integrity by validating SHA256 hashes against PyPI metadata.
+* **Provenance Analysis**: Checks for a valid source repository URL and modern packaging standards (`pyproject.toml`).
+* **Static Code Analysis**: Performs static analysis on package source code to detect suspicious patterns like `eval()`, `exec()`, and suspicious API usage.
+* **Vulnerability Scanning**: Checks for known vulnerabilities using the OSV (Open Source Vulnerabilities) database.
+* **Malware Scanning**: Scans package files for malware using the VirusTotal API.
 
 #### User Experience
 
@@ -104,11 +105,15 @@ pipq install --force package    # Skip analysis entirely
 
 pipq uses a modular validator system where each security check is implemented as an independent validator that inherits from `BaseValidator`. This allows for easy extension and customization of security policies.
 
-## Current Limitations
+## Key Security Features
 
-* **No code analysis**: Does not inspect actual package source code
-* **No malware detection**: Cannot detect malicious code within packages
-* **Metadata-only analysis**: Relies solely on PyPI metadata for validation
+pipq goes beyond simple metadata checks and analyzes the actual package contents to provide robust protection against supply chain attacks.
+
+* **Static Code Analysis**: pipq parses the source code of the package using Abstract Syntax Trees (AST) to detect suspicious patterns without executing the code. This can reveal malicious behavior like unexpected network connections, file system manipulation, or obfuscated code.
+
+* **Integrity Verification**: The tool verifies the integrity of the downloaded package by comparing its SHA256 hash with the hash provided by PyPI. This ensures the package has not been tampered with in transit.
+
+* **Provenance Checks**: pipq checks for signs of good project health and maintenance, such as the presence of a source code repository on a reputable platform and the use of modern packaging standards.
 
 ## Planned Features
 
