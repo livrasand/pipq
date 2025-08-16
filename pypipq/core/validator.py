@@ -155,40 +155,24 @@ def validate_package(pkg_name: str, config: Config, version: Optional[str] = Non
     with tempfile.TemporaryDirectory() as temp_dir:
         # 2. Download and extract package
         downloaded_file_path, extracted_path = None, None
-        if deep_scan: # Only download for deep scans
-            dist_url = _get_dist_url(metadata, version=version)
-            if dist_url:
-                downloaded_file_path, extracted_path = _download_and_extract_package(dist_url, temp_dir)
+        dist_url = _get_dist_url(metadata, version=version)
+        if dist_url:
+            downloaded_file_path, extracted_path = _download_and_extract_package(dist_url, temp_dir)
 
         # 3. Discover and instantiate validators
         all_validators = discover_validators()
         
-        if not deep_scan:
-            # Shallow scan: only vulnerability validator
-            enabled_validators = [
-                v(
-                    pkg_name,
-                    metadata,
-                    config,
-                    extracted_path=None,
-                    downloaded_file_path=None
-                )
-                for v in all_validators
-                if v.name == "VulnerabilityValidator"
-            ]
-        else:
-            # Deep scan: all enabled validators
-            enabled_validators = [
-                v(
-                    pkg_name,
-                    metadata,
-                    config,
-                    extracted_path=extracted_path,
-                    downloaded_file_path=downloaded_file_path
-                )
-                for v in all_validators
-                if config.is_validator_enabled(v.name)
-            ]
+        enabled_validators = [
+            v(
+                pkg_name,
+                metadata,
+                config,
+                extracted_path=extracted_path,
+                downloaded_file_path=downloaded_file_path
+            )
+            for v in all_validators
+            if config.is_validator_enabled(v.name)
+        ]
 
         # 4. Run validators and aggregate results
         validator_results = [v.validate() for v in enabled_validators]
