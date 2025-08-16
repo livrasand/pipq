@@ -8,6 +8,7 @@ import tempfile
 import shutil
 import tarfile
 import zipfile
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Type, Tuple, Optional
 import requests
@@ -66,6 +67,8 @@ def _get_dist_url(metadata: Dict[str, Any], version: Optional[str] = None) -> st
     return dist_files[0].get("url") if dist_files else None
 
 def _download_and_extract_package(url: str, temp_dir: str) -> Tuple[Optional[str], Optional[str]]:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Downloading and extracting package from url: {url}")
     """Downloads a package and extracts it to a subdirectory."""
     try:
         response = requests.get(url, stream=True)
@@ -97,7 +100,9 @@ def _download_and_extract_package(url: str, temp_dir: str) -> Tuple[Optional[str
         return None, None
 
 
-def validate_package(pkg_name: str, config: Config, version: Optional[str] = None, validated_packages: set = None, depth: int = 0) -> Dict[str, Any]:
+def validate_package(pkg_name: str, config: Config, version: Optional[str] = None, validated_packages: set = None, depth: int = 0, deep_scan: bool = False) -> Dict[str, Any]:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Validating package: {pkg_name} version: {version} depth: {depth} deep_scan: {deep_scan}")
     """
     Fetch package metadata and run all enabled validators.
     
@@ -107,6 +112,7 @@ def validate_package(pkg_name: str, config: Config, version: Optional[str] = Non
         version: The specific version of the package to validate. If None, latest is used.
         validated_packages: A set of already validated packages to avoid infinite recursion.
         depth: The current recursion depth.
+        deep_scan: Whether to perform a deep scan including dependencies.
         
     Returns:
         A dictionary with the aggregated validation results.
@@ -114,7 +120,11 @@ def validate_package(pkg_name: str, config: Config, version: Optional[str] = Non
     if validated_packages is None:
         validated_packages = set()
 
-    if pkg_name in validated_packages or depth > config.get("max_recursion_depth", 3):
+    if pkg_name in validated_packages:
+        return {}
+
+    if deep_scan and depth > config.get("max_recursion_depth", 4):
+        logger.warning(f"Max recursion depth reached for {pkg_name}")
         return {}
 
     validated_packages.add(pkg_name)
@@ -132,10 +142,8 @@ def validate_package(pkg_name: str, config: Config, version: Optional[str] = Non
         response.raise_for_status()
         metadata = response.json()
     except requests.exceptions.RequestException as e:
-        # If a specific version was requested and not found, that's an error
         if version:
              raise RuntimeError(f"Failed to fetch metadata for '{pkg_name}=={version}': {e}")
-        # If no version was specified, try without /json to see if the package exists at all
         try:
             response = requests.get(f"{pypi_url}{pkg_name}/json", timeout=timeout)
             response.raise_for_status()
@@ -147,23 +155,40 @@ def validate_package(pkg_name: str, config: Config, version: Optional[str] = Non
     with tempfile.TemporaryDirectory() as temp_dir:
         # 2. Download and extract package
         downloaded_file_path, extracted_path = None, None
-        dist_url = _get_dist_url(metadata, version=version)
-        if dist_url:
-            downloaded_file_path, extracted_path = _download_and_extract_package(dist_url, temp_dir)
+        if deep_scan: # Only download for deep scans
+            dist_url = _get_dist_url(metadata, version=version)
+            if dist_url:
+                downloaded_file_path, extracted_path = _download_and_extract_package(dist_url, temp_dir)
 
         # 3. Discover and instantiate validators
         all_validators = discover_validators()
-        enabled_validators = [
-            v(
-                pkg_name,
-                metadata,
-                config,
-                extracted_path=extracted_path,
-                downloaded_file_path=downloaded_file_path
-            )
-            for v in all_validators
-            if config.is_validator_enabled(v.name)
-        ]
+        
+        if not deep_scan:
+            # Shallow scan: only vulnerability validator
+            enabled_validators = [
+                v(
+                    pkg_name,
+                    metadata,
+                    config,
+                    extracted_path=None,
+                    downloaded_file_path=None
+                )
+                for v in all_validators
+                if v.name == "VulnerabilityValidator"
+            ]
+        else:
+            # Deep scan: all enabled validators
+            enabled_validators = [
+                v(
+                    pkg_name,
+                    metadata,
+                    config,
+                    extracted_path=extracted_path,
+                    downloaded_file_path=downloaded_file_path
+                )
+                for v in all_validators
+                if config.is_validator_enabled(v.name)
+            ]
 
         # 4. Run validators and aggregate results
         validator_results = [v.validate() for v in enabled_validators]
@@ -171,18 +196,18 @@ def validate_package(pkg_name: str, config: Config, version: Optional[str] = Non
     aggregated_errors = [err for res in validator_results for err in res.get("errors", [])]
     aggregated_warnings = [warn for res in validator_results for warn in res.get("warnings", [])]
 
-    # 5. Recursively validate dependencies
-    dependencies = []
-    for res in validator_results:
-        if res.get("info", {}).get("dependencies"):
-            dependencies.extend(res["info"]["dependencies"])
-
+    # 5. Recursively validate dependencies (only for deep scan)
     dependency_results = []
-    for dep in dependencies:
-        # When validating dependencies, we check their latest version, not a specific one
-        dep_results = validate_package(dep, config, validated_packages=validated_packages, depth=depth + 1)
-        if dep_results:
-            dependency_results.append(dep_results)
+    if deep_scan:
+        dependencies = []
+        for res in validator_results:
+            if res.get("info", {}).get("dependencies"):
+                dependencies.extend(res["info"]["dependencies"])
+
+        for dep in dependencies:
+            dep_results = validate_package(dep, config, validated_packages=validated_packages, depth=depth + 1, deep_scan=True)
+            if dep_results:
+                dependency_results.append(dep_results)
 
     return {
         "package": pkg_name,

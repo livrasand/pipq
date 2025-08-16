@@ -9,7 +9,8 @@ import sys
 import io
 import subprocess
 import click
-from typing import List, Optional, Tuple
+import logging
+from typing import Any, Dict, List, Optional, Tuple
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 if os.name == 'nt':
     os.system('chcp 65001')
@@ -91,13 +92,19 @@ def _parse_package_spec(package_spec: str) -> Tuple[str, Optional[str]]:
 @click.group(cls=AliasedGroup, invoke_without_command=True)
 @click.option("--version", "-v", is_flag=True, help="Show version and exit")
 @click.option("--verbose",  is_flag=True, help="Verbose output")
+@click.option("--debug", is_flag=True, help="Enable debug logging.")
 @click.pass_context
-def main(ctx: click.Context, version: bool, verbose: bool) -> None:
+def main(ctx: click.Context, version: bool, verbose: bool, debug: bool) -> None:
     """
     pipq - A secure pip proxy inspired.
     
     Analyzes packages before installation to detect potential security issues.
     """
+    log_level = logging.DEBUG if debug else logging.INFO
+    logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+    logger.debug("Debug mode enabled.")
+    
     if version:
         from pypipq import __version__
         console.print(f"pypipq version {__version__}")
@@ -108,7 +115,7 @@ def main(ctx: click.Context, version: bool, verbose: bool) -> None:
         console.print("Use 'pipq --help' for more information.")
 
 
-@main.command(name="install", context_settings=dict(
+@main.command(name="install", 
     short_help="Install packages after security validation.",
     help="""Install packages after security validation.
 
@@ -117,13 +124,15 @@ def main(ctx: click.Context, version: bool, verbose: bool) -> None:
 
     Use the --dev flag to include development dependencies from 'pyproject.toml'.
     """
-))
+)
 @click.argument("packages", nargs=-1, required=False)
 @click.option("--dev", is_flag=True, help="Include development dependencies.")
 @click.option("--force", "-f", is_flag=True, help="Skip validation and install directly")
 @click.option("--silent", "-s", is_flag=True, help="Run in silent mode (no prompts)")
 @click.option("--config", type=click.Path(exists=True), help="Path to config file")
 def install(packages: List[str], dev: bool, force: bool, silent: bool, config: Optional[str]) -> None:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting install command for packages: {packages}")
     # Load configuration
     config_obj = Config(config_path=config)
 
@@ -189,7 +198,11 @@ def install(packages: List[str], dev: bool, force: bool, silent: bool, config: O
 @click.option("--json", "json_output", is_flag=True, help="Output results in JSON format")
 @click.option("--md", "md_output", is_flag=True, help="Output results in Markdown format")
 @click.option("--html", "html_output", is_flag=True, help="Output results in HTML format")
-def check(packages: List[str], config: Optional[str], json_output: bool, md_output: bool, html_output: bool) -> None:
+@click.option("--deep", is_flag=True, help="Perform a deep scan including dependencies.")
+@click.option("--depth", type=int, default=4, help="Max recursion depth for deep scan.")
+def check(packages: List[str], config: Optional[str], json_output: bool, md_output: bool, html_output: bool, deep: bool, depth: int) -> None:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting check command for packages: {packages} with deep_scan={deep} and depth={depth}")
     """
     Check one or more packages without installing them.
     
@@ -205,7 +218,7 @@ def check(packages: List[str], config: Optional[str], json_output: bool, md_outp
         
         with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
             try:
-                results = validate_package(package_name, config_obj, version=version)
+                results = validate_package(package_name, config_obj, version=version, deep_scan=deep, depth=depth)
                 all_results.append(results)
                 spinner.succeed(f"Analysis complete for {display_name}")
             except Exception as e:
@@ -296,10 +309,10 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
         warnings = results.get("warnings", [])
         validator_results = results.get("validator_results", [])
         
-        if not errors and not warnings and not validator_results:
-            console.print(f"[green]{package_name}: No issues found[/green]")
+        if not validator_results:
+            console.print(f"[yellow]{package_name}: No validators were run.[/yellow]")
             continue
-        
+
         console.print(f"\n[bold blue]Results for: {package_name}[/bold blue]")
 
         # Display summary of validators
@@ -308,18 +321,25 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
         summary_table.add_column("Category", style="bold")
         summary_table.add_column("Status", style="bold")
 
+        has_issues = False
         for val_result in validator_results:
             val_name = val_result["name"]
             val_category = val_result["category"]
             status = "[green]Passed[/green]"
             if val_result["errors"]:
                 status = "[red]Failed[/red]"
+                has_issues = True
             elif val_result["warnings"]:
                 status = "[yellow]Warning[/yellow]"
+                has_issues = True
             summary_table.add_row(val_name, val_category, status)
         
         console.print(summary_table)
         console.print()
+
+        if not has_issues:
+            console.print(f"[green]{package_name}: No issues found[/green]")
+            #continue
 
         # Display aggregated errors and warnings
         if errors or warnings:
@@ -370,6 +390,7 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
                 console.print(Panel(summary_text, style="red", title="Security Summary"))
             else:
                 console.print(Panel(summary_text, style="yellow", title="Security Summary"))
+
 
 
 def _display_results_and_get_confirmation(all_results: List[dict], config: Config) -> bool:
@@ -440,6 +461,8 @@ def _run_pip_install(packages: List[str], upgrade: bool = False) -> None:
 @click.option("--fix", is_flag=True, help="Automatically upgrade vulnerable packages.")
 @click.option("--config", type=click.Path(exists=True), help="Path to config file")
 def audit(json_output: bool, html_output: bool, fix: bool, config: Optional[str]) -> None:
+    logger = logging.getLogger(__name__)
+    logger.info("Starting audit command.")
     """
     Audit all installed packages in the current environment for security issues.
     """
@@ -514,6 +537,8 @@ def _get_package_status(result: Dict[str, Any]) -> Tuple[str, str]:
 @click.option("--vulnerable", is_flag=True, help="List only packages with vulnerabilities.")
 @click.option("--config", type=click.Path(exists=True), help="Path to config file")
 def list_packages(vulnerable: bool, config: Optional[str]) -> None:
+    logger = logging.getLogger(__name__)
+    logger.info("Starting list_packages command.")
     """
     List installed packages with their security status.
     """
@@ -630,6 +655,8 @@ def upgrade(
     dry_run: bool,
     config: Optional[str],
 ) -> None:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting upgrade command for packages: {packages}")
     """
     Upgrade packages securely.
     """
@@ -751,6 +778,8 @@ def upgrade(
 @click.argument("package", type=str, required=True)
 @click.option("--config", type=click.Path(exists=True), help="Path to config file")
 def info(package: str, config: Optional[str]) -> None:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting info command for package: {package}")
     """
     Display detailed information and a security profile for a package.
     """
@@ -822,7 +851,7 @@ def search_packages(query: str) -> None:
     table.add_column("Summary")
 
     try:
-        search_results = search(f"site:pypi.org {query}", num_results=10)
+        search_results = search(f"site:pypi.org {query}", stop=10)
         pypi_urls = [url for url in search_results if "pypi.org/project/" in url]
 
         for url in pypi_urls:

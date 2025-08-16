@@ -3,6 +3,7 @@ Utilities for interacting with PyPI API.
 """
 
 import requests
+import logging
 from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 
@@ -11,6 +12,8 @@ from urllib.parse import urljoin
 
 
 def fetch_package_metadata(pkg_name: str, pypi_url: str = "https://pypi.org/pypi/") -> Dict[str, Any]:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Fetching metadata for package: {pkg_name} from {pypi_url}")
     """
     Fetch package metadata from PyPI API.
     
