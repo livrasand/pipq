@@ -34,9 +34,13 @@ dependencies = [
     "requests>=2.25.0",
     "packaging>=21.0",
     "tomli>=1.2.0; python_version<'3.11'",
+    "tomli-w>=1.0.0",
+    "toml>=0.10.2",
     "python-whois>=0.9.5",
     "python-gnupg>=0.5.5",
     "portalocker>=2.0.0",
+    "beautifulsoup4>=4.9.3",
+    "google>=3.0.0",
 ]
 
 [project.optional-dependencies]

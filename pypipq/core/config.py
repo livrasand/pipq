@@ -15,6 +15,8 @@ except ImportError:
     import tomli as tomllib  # Fallback for older Python versions
 
 
+USER_CONFIG_PATH = Path.home() / ".config" / "pipq" / "config.toml"
+
 class Config:
     """
     Configuration manager for pypipq.
@@ -27,7 +29,7 @@ class Config:
     """
     
     DEFAULT_CONFIG = {
-        "mode": "warn",  # silent, warn, block
+        "mode": "interactive",  # interactive, silent, block
         "auto_continue_warnings": True,
         "disable_validators": [],
         "enable_validators": [],  # If specified, only these validators run
@@ -180,6 +182,46 @@ class Config:
         """Check if we should auto-continue on warnings."""
         return self.get("auto_continue_warnings")
     
+    def _get_user_config(self) -> Dict[str, Any]:
+        """Loads only the user-specific config file."""
+        if not USER_CONFIG_PATH.exists():
+            return {}
+        try:
+            with open(USER_CONFIG_PATH, "rb") as f:
+                return tomllib.load(f)
+        except Exception:
+            return {}
+
+    def save_user_config(self) -> None:
+        """Saves the current non-default configuration to the user config file."""
+        # We only want to save settings that differ from the default
+        user_config = self._get_user_config()
+
+        for key, value in self.config.items():
+            # If the current value is different from the default, we update it
+            if key in self.DEFAULT_CONFIG and value != self.DEFAULT_CONFIG[key]:
+                 user_config[key] = value
+            # If the key is not a default key, it's a custom one and should be saved
+            elif key not in self.DEFAULT_CONFIG:
+                 user_config[key] = value
+
+        try:
+            # Ensure the directory exists
+            USER_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            # Use tomli-w if available, otherwise basic string formatting
+            try:
+                import tomli_w
+                with open(USER_CONFIG_PATH, "wb") as f:
+                    tomli_w.dump(user_config, f)
+            except ImportError:
+                # Basic fallback if tomli-w is not installed
+                import toml
+                with open(USER_CONFIG_PATH, "w", encoding="utf-8") as f:
+                    toml.dump(user_config, f)
+
+        except Exception as e:
+            raise IOError(f"Failed to save configuration to {USER_CONFIG_PATH}: {e}")
+
     def __str__(self) -> str:
         """String representation of the configuration."""
         return f"Config({self.config})"

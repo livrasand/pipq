@@ -38,14 +38,19 @@ def discover_validators() -> List[Type[BaseValidator]]:
                 validators.append(item)
     return validators
 
-def _get_latest_dist_url(metadata: Dict[str, Any]) -> str:
-    """Get the URL for the latest distribution file."""
+def _get_dist_url(metadata: Dict[str, Any], version: Optional[str] = None) -> str:
+    """Get the URL for a specific version's distribution file, or the latest."""
     releases = metadata.get("releases", {})
-    latest_version = metadata.get("info", {}).get("version")
-    if not latest_version or latest_version not in releases:
+
+    if version:
+        target_version = version
+    else:
+        target_version = metadata.get("info", {}).get("version")
+
+    if not target_version or target_version not in releases:
         return None
 
-    dist_files = releases[latest_version]
+    dist_files = releases[target_version]
     if not dist_files:
         return None
 
@@ -92,13 +97,14 @@ def _download_and_extract_package(url: str, temp_dir: str) -> Tuple[Optional[str
         return None, None
 
 
-def validate_package(pkg_name: str, config: Config, validated_packages: set = None, depth: int = 0) -> Dict[str, Any]:
+def validate_package(pkg_name: str, config: Config, version: Optional[str] = None, validated_packages: set = None, depth: int = 0) -> Dict[str, Any]:
     """
     Fetch package metadata and run all enabled validators.
     
     Args:
         pkg_name: The name of the package to validate.
         config: The configuration object.
+        version: The specific version of the package to validate. If None, latest is used.
         validated_packages: A set of already validated packages to avoid infinite recursion.
         depth: The current recursion depth.
         
@@ -118,17 +124,30 @@ def validate_package(pkg_name: str, config: Config, validated_packages: set = No
     timeout = config.get("timeout", 30)
     
     try:
-        response = requests.get(f"{pypi_url}{pkg_name}/json", timeout=timeout)
+        url = f"{pypi_url}{pkg_name}/json"
+        if version:
+            url = f"{pypi_url}{pkg_name}/{version}/json"
+
+        response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         metadata = response.json()
     except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"Failed to fetch metadata for '{pkg_name}': {e}")
+        # If a specific version was requested and not found, that's an error
+        if version:
+             raise RuntimeError(f"Failed to fetch metadata for '{pkg_name}=={version}': {e}")
+        # If no version was specified, try without /json to see if the package exists at all
+        try:
+            response = requests.get(f"{pypi_url}{pkg_name}/json", timeout=timeout)
+            response.raise_for_status()
+            metadata = response.json()
+        except requests.exceptions.RequestException:
+            raise RuntimeError(f"Failed to fetch metadata for '{pkg_name}': {e}")
 
     validator_results = []
     with tempfile.TemporaryDirectory() as temp_dir:
         # 2. Download and extract package
         downloaded_file_path, extracted_path = None, None
-        dist_url = _get_latest_dist_url(metadata)
+        dist_url = _get_dist_url(metadata, version=version)
         if dist_url:
             downloaded_file_path, extracted_path = _download_and_extract_package(dist_url, temp_dir)
 
@@ -160,7 +179,8 @@ def validate_package(pkg_name: str, config: Config, validated_packages: set = No
 
     dependency_results = []
     for dep in dependencies:
-        dep_results = validate_package(dep, config, validated_packages, depth + 1)
+        # When validating dependencies, we check their latest version, not a specific one
+        dep_results = validate_package(dep, config, validated_packages=validated_packages, depth=depth + 1)
         if dep_results:
             dependency_results.append(dep_results)
 

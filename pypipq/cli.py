@@ -20,28 +20,75 @@ from rich.table import Table
 from rich.text import Text
 from halo import Halo
 
+from halo import Halo
+
 from .core.config import Config
 from .core.validator import validate_package
+from .utils.environment import detect_dependency_file, get_installed_packages, parse_dependencies
+from .utils.pypi import fetch_package_metadata
 
 
 console = Console(emoji=True, force_terminal=True)
 
 
-def _parse_package_spec(package_spec: str) -> str:
-    """Parse package specification into name.
+class AliasedGroup(click.Group):
+    """A click group that allows aliases for commands."""
+    def __init__(self, *args, **kwargs):
+        super(AliasedGroup, self).__init__(*args, **kwargs)
+        self._aliases = {}
+
+    def get_command(self, ctx, cmd_name):
+        # Allow case-insensitive commands
+        cmd_name = cmd_name.lower()
+
+        # Exact match
+        rv = click.Group.get_command(self, ctx, cmd_name)
+        if rv is not None:
+            return rv
+
+        # Check aliases
+        if cmd_name in self._aliases:
+            return click.Group.get_command(self, ctx, self._aliases[cmd_name])
+
+        # Match prefixes
+        matches = [x for x in self.list_commands(ctx)
+                   if x.startswith(cmd_name)]
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return click.Group.get_command(self, ctx, matches[0])
+
+        ctx.fail(f"Too many matches for '{cmd_name}': {', '.join(sorted(matches))}")
+        return None # Unreachable, but for clarity
+
+    def add_alias(self, alias, command_name):
+        self._aliases[alias.lower()] = command_name.lower()
+
+
+def _parse_package_spec(package_spec: str) -> Tuple[str, Optional[str]]:
+    """
+    Parse package specification into name and version.
+    Supports 'name==version', 'name@version', and 'name'.
     
     Args:
-        package_spec: Package specification (e.g. "flask" or "flask==2.0.1")
+        package_spec: Package specification string.
     
     Returns:
-        Package name
+        A tuple of (package_name, version_specifier).
+        Version is None if not specified.
     """
     if '==' in package_spec:
-        return package_spec.split('==', 1)[0]
-    return package_spec
+        name, version = package_spec.split('==', 1)
+        return name.strip(), version.strip()
+    if '@' in package_spec:
+        # Avoid treating email-style VCS URLs as package@version
+        if not package_spec.startswith("git+") and not package_spec.startswith("http"):
+            name, version = package_spec.split('@', 1)
+            return name.strip(), version.strip()
+    return package_spec.strip(), None
 
 
-@click.group(invoke_without_command=True)
+@click.group(cls=AliasedGroup, invoke_without_command=True)
 @click.option("--version", "-v", is_flag=True, help="Show version and exit")
 @click.option("--verbose",  is_flag=True, help="Verbose output")
 @click.pass_context
@@ -61,20 +108,41 @@ def main(ctx: click.Context, version: bool, verbose: bool) -> None:
         console.print("Use 'pipq --help' for more information.")
 
 
-@main.command()
-@click.argument("packages", nargs=-1, required=True)
+@main.command(name="install", context_settings=dict(
+    short_help="Install packages after security validation.",
+    help="""Install packages after security validation.
+
+    If no packages are specified, pipq will attempt to install dependencies
+    from 'pyproject.toml', 'requirements.txt', or 'setup.py' in that order.
+
+    Use the --dev flag to include development dependencies from 'pyproject.toml'.
+    """
+))
+@click.argument("packages", nargs=-1, required=False)
+@click.option("--dev", is_flag=True, help="Include development dependencies.")
 @click.option("--force", "-f", is_flag=True, help="Skip validation and install directly")
 @click.option("--silent", "-s", is_flag=True, help="Run in silent mode (no prompts)")
 @click.option("--config", type=click.Path(exists=True), help="Path to config file")
-def install(packages: List[str], force: bool, silent: bool, config: Optional[str]) -> None:
-    """
-    Install packages after security validation.
-    
-    PACKAGES: One or more package names to install (can include versions with ==)
-    """
+def install(packages: List[str], dev: bool, force: bool, silent: bool, config: Optional[str]) -> None:
     # Load configuration
     config_obj = Config(config_path=config)
-    
+
+    # Convert tuple to list to allow modification
+    packages = list(packages)
+
+    # If no packages are specified, detect dependency file
+    if not packages:
+        dependency_file = detect_dependency_file()
+        if dependency_file:
+            console.print(f"[green]Detected dependency file: {dependency_file}[/green]")
+            packages = parse_dependencies(dependency_file, include_dev=dev)
+            if not packages:
+                console.print("[yellow]No dependencies found in the file.[/yellow]")
+                return
+        else:
+            console.print("[red]No packages specified and no dependency file found.[/red]")
+            return
+
     # Override mode if silent flag is used
     if silent:
         config_obj.set("mode", "silent")
@@ -88,14 +156,14 @@ def install(packages: List[str], force: bool, silent: bool, config: Optional[str
     # Validate each package
     all_results = []
     for package_spec in packages:
-        package_name = _parse_package_spec(package_spec)
-        display_name = package_name
+        package_name, version = _parse_package_spec(package_spec)
+        display_name = f"{package_name}@{version}" if version else package_name
         
         console.print(f"\n[bold blue]Analyzing package: {display_name}[/bold blue]")
         
         with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
             try:
-                results = validate_package(package_name, config_obj)
+                results = validate_package(package_name, config_obj, version=version)
                 all_results.append(results)
                 spinner.succeed(f"Analysis complete for {display_name}")
             except Exception as e:
@@ -130,14 +198,14 @@ def check(packages: List[str], config: Optional[str], json_output: bool, md_outp
     config_obj = Config(config_path=config)
     all_results = []
     for package_spec in packages:
-        package_name = _parse_package_spec(package_spec)
-        display_name = package_name
+        package_name, version = _parse_package_spec(package_spec)
+        display_name = f"{package_name}@{version}" if version else package_name
         
         console.print(f"[bold blue]Analyzing package: {display_name}[/bold blue]")
         
         with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
             try:
-                results = validate_package(package_name, config_obj)
+                results = validate_package(package_name, config_obj, version=version)
                 all_results.append(results)
                 spinner.succeed(f"Analysis complete for {display_name}")
             except Exception as e:
@@ -337,28 +405,449 @@ def _should_continue_on_error(config: Config) -> bool:
     return config.get("mode") != "block"
 
 
-def _run_pip_install(packages: List[str]) -> None:
+def _run_pip_install(packages: List[str], upgrade: bool = False) -> None:
     """
     Run the actual pip install command.
     
     Args:
-        packages: List of package names to install
+        packages: List of package names to install.
+        upgrade: Whether to run 'pip install --upgrade'.
     """
-    console.print(f"[bold green]Installing packages: {', '.join(packages)}[/bold green]")
+    action = "Upgrading" if upgrade else "Installing"
+    console.print(f"[bold green]{action} packages: {', '.join(packages)}[/bold green]")
     
     # Build pip command
-    pip_cmd = [sys.executable, "-m", "pip", "install"] + list(packages)
+    pip_cmd = [sys.executable, "-m", "pip", "install"]
+    if upgrade:
+        pip_cmd.append("--upgrade")
+    pip_cmd.extend(list(packages))
     
     try:
         # Run pip install and stream output
-        result = subprocess.run(pip_cmd, check=True, capture_output=False)
-        console.print("[green]Installation completed successfully![/green]")
+        subprocess.run(pip_cmd, check=True, capture_output=False)
+        console.print(f"[green]{action} completed successfully![/green]")
     except subprocess.CalledProcessError as e:
         console.print(f"[red]pip install failed with exit code {e.returncode}[/red]")
         sys.exit(e.returncode)
     except KeyboardInterrupt:
-        console.print("\\n[yellow]Installation interrupted by user[/yellow]")
+        console.print(f"\\n[yellow]{action} interrupted by user[/yellow]")
         sys.exit(1)
+
+
+@main.command()
+@click.option("--json", "json_output", is_flag=True, help="Output results in JSON format.")
+@click.option("--html", "html_output", is_flag=True, help="Output results in HTML format.")
+@click.option("--fix", is_flag=True, help="Automatically upgrade vulnerable packages.")
+@click.option("--config", type=click.Path(exists=True), help="Path to config file")
+def audit(json_output: bool, html_output: bool, fix: bool, config: Optional[str]) -> None:
+    """
+    Audit all installed packages in the current environment for security issues.
+    """
+    config_obj = Config(config_path=config)
+    installed_packages = get_installed_packages()
+
+    if not installed_packages:
+        console.print("[yellow]No installed packages found to audit.[/yellow]")
+        return
+
+    console.print(f"[bold blue]Auditing {len(installed_packages)} installed packages...[/bold blue]")
+
+    all_results = []
+    vulnerable_packages = []
+    with Halo(text="Auditing...", spinner="dots") as spinner:
+        for i, pkg in enumerate(installed_packages):
+            package_name = pkg["name"]
+            version = pkg["version"]
+            spinner.text = f"Auditing {package_name}=={version} ({i+1}/{len(installed_packages)})"
+            try:
+                # We skip packages that are fundamental to pip's operation
+                if package_name.lower() in ['pip', 'setuptools', 'wheel', 'pipq']:
+                    continue
+                results = validate_package(package_name, config_obj, version=version)
+                all_results.append(results)
+                if results.get("errors"):
+                    vulnerable_packages.append(results)
+            except Exception as e:
+                spinner.warn(f"Could not audit {package_name}: {str(e)}")
+
+    if json_output:
+        console.print(json.dumps(all_results, indent=4))
+        return
+
+    if html_output:
+        # Placeholder for now
+        console.print(_format_results_as_html(all_results))
+        return
+
+    _display_results(all_results, show_summary=True)
+
+    if fix and vulnerable_packages:
+        console.print("\n[bold yellow]--fix is not yet fully implemented.[/bold yellow]")
+        console.print("To fix vulnerabilities, run 'pipq upgrade --security-only'")
+
+    # Set exit code based on findings
+    if any(res.get("errors") for res in all_results):
+        sys.exit(1)
+
+
+def _get_package_status(result: Dict[str, Any]) -> Tuple[str, str]:
+    """Determine the status and issues for a package from its validation result."""
+    errors = result.get("errors", [])
+    warnings = result.get("warnings", [])
+
+    if errors:
+        # Check for specific vulnerability errors
+        if any("vulnerability" in err.lower() for err in errors):
+            return "🔒 VULN", ", ".join(errors)
+        return "🔥 ERROR", ", ".join(errors)
+
+    if warnings:
+        # Check for age warnings
+        if any("age" in warn.lower() for warn in warnings):
+            return "⚠️ OLD", ", ".join(warnings)
+        return "🤔 WARN", ", ".join(warnings)
+
+    return "✅ OK", "None"
+
+
+@main.command(name="list")
+@click.option("--vulnerable", is_flag=True, help="List only packages with vulnerabilities.")
+@click.option("--config", type=click.Path(exists=True), help="Path to config file")
+def list_packages(vulnerable: bool, config: Optional[str]) -> None:
+    """
+    List installed packages with their security status.
+    """
+    config_obj = Config(config_path=config)
+    installed_packages = get_installed_packages()
+
+    if not installed_packages:
+        console.print("[yellow]No installed packages found.[/yellow]")
+        return
+
+    table = Table(title="Installed Packages Security Status")
+    table.add_column("Package", style="cyan")
+    table.add_column("Version", style="magenta")
+    table.add_column("Status", style="bold")
+    table.add_column("Issues")
+
+    with Halo(text="Analyzing packages...", spinner="dots") as spinner:
+        for i, pkg in enumerate(installed_packages):
+            package_name = pkg["name"]
+            version = pkg["version"]
+            spinner.text = f"Analyzing {package_name}=={version} ({i+1}/{len(installed_packages)})"
+
+            try:
+                # For 'list', we can run a slightly lighter validation if needed
+                # For now, we run the full validation to be safe
+                results = validate_package(package_name, config_obj, version=version)
+                status, issues = _get_package_status(results)
+
+                if vulnerable and "VULN" not in status:
+                    continue
+
+                table.add_row(package_name, version, status, issues)
+            except Exception:
+                table.add_row(package_name, version, "📊 CHECK", "Analysis failed")
+
+    console.print(table)
+
+
+@main.command()
+@click.argument("action", type=click.Choice(['get', 'set', 'list', 'reset']), required=True)
+@click.argument("key", type=str, required=False)
+@click.argument("value", type=str, required=False)
+def config(action: str, key: Optional[str], value: Optional[str]) -> None:
+    """
+    Manage pipq configuration.
+
+    ACTION:
+        get <key>: Get a configuration value.
+        set <key> <value>: Set a configuration value.
+        list: List all configuration values.
+        reset: Reset configuration to defaults.
+    """
+    config_obj = Config()
+
+    if action == "list":
+        table = Table(title="pipq Configuration")
+        table.add_column("Key", style="cyan")
+        table.add_column("Value", style="magenta")
+        for k, v in sorted(config_obj.config.items()):
+            table.add_row(str(k), str(v))
+        console.print(table)
+
+    elif action == "get":
+        if not key:
+            console.print("[red]Error: 'get' action requires a key.[/red]")
+            sys.exit(1)
+        retrieved_value = config_obj.get(key)
+        if retrieved_value is not None:
+            console.print(f"{key} = {retrieved_value}")
+        else:
+            console.print(f"'{key}' not found in configuration.")
+            sys.exit(1)
+
+    elif action == "set":
+        if not key or value is None:
+            console.print("[red]Error: 'set' action requires a key and a value.[/red]")
+            sys.exit(1)
+
+        # Attempt to convert value to bool or int if applicable
+        if value.lower() in ['true', 'false']:
+            processed_value = value.lower() == 'true'
+        elif value.isdigit():
+            processed_value = int(value)
+        else:
+            processed_value = value
+
+        config_obj.set(key, processed_value)
+        try:
+            config_obj.save_user_config()
+            console.print(f"[green]'{key}' set to '{processed_value}'[/green]")
+        except IOError as e:
+            console.print(f"[red]Error saving configuration: {e}[/red]")
+            sys.exit(1)
+
+    elif action == "reset":
+        from .core.config import USER_CONFIG_PATH
+        if USER_CONFIG_PATH.exists():
+            USER_CONFIG_PATH.unlink()
+            console.print("[green]Configuration reset to defaults.[/green]")
+        else:
+            console.print("[yellow]No user configuration file to reset.[/yellow]")
+
+
+@main.command()
+@click.argument("packages", nargs=-1, required=False)
+@click.option("--all", "all_packages", is_flag=True, help="Upgrade all outdated packages.")
+@click.option("--security-only", is_flag=True, help="Upgrade only packages with security vulnerabilities.")
+@click.option("--dry-run", is_flag=True, help="Show what would be upgraded, but don't upgrade.")
+@click.option("--config", type=click.Path(exists=True), help="Path to config file")
+def upgrade(
+    packages: List[str],
+    all_packages: bool,
+    security_only: bool,
+    dry_run: bool,
+    config: Optional[str],
+) -> None:
+    """
+    Upgrade packages securely.
+    """
+    config_obj = Config(config_path=config)
+
+    if not packages and not all_packages and not security_only:
+        console.print("[red]Error: You must specify packages to upgrade, or use --all or --security-only.[/red]")
+        return
+
+    to_upgrade = []
+
+    # Logic for single package upgrade
+    if packages:
+        installed_map = {p["name"].lower(): p["version"] for p in get_installed_packages()}
+        for pkg_name in packages:
+            if pkg_name.lower() not in installed_map:
+                console.print(f"[yellow]Package '{pkg_name}' is not installed. Skipping.[/yellow]")
+                continue
+
+            current_version = installed_map[pkg_name.lower()]
+            try:
+                metadata = fetch_package_metadata(pkg_name)
+                latest_version = metadata.get("info", {}).get("version")
+
+                if latest_version and latest_version != current_version:
+                    # Avoid duplicates
+                    if not any(p['name'] == pkg_name for p in to_upgrade):
+                        to_upgrade.append({
+                            "name": pkg_name,
+                            "current": current_version,
+                            "latest": latest_version
+                        })
+                else:
+                    console.print(f"[green]Package '{pkg_name}' is already up-to-date.[/green]")
+            except Exception as e:
+                console.print(f"[red]Could not fetch metadata for {pkg_name}: {e}[/red]")
+
+    # Logic for --all
+    if all_packages:
+        installed_packages = get_installed_packages()
+        with Halo(text="Checking for outdated packages...", spinner="dots") as spinner:
+            for i, pkg in enumerate(installed_packages):
+                spinner.text = f"Checking {pkg['name']} ({i+1}/{len(installed_packages)})"
+                if pkg['name'].lower() in ['pip', 'setuptools', 'wheel', 'pipq']:
+                    continue
+                try:
+                    metadata = fetch_package_metadata(pkg['name'])
+                    latest_version = metadata.get("info", {}).get("version")
+                    if latest_version and latest_version != pkg['version']:
+                        if not any(p['name'] == pkg['name'] for p in to_upgrade):
+                            to_upgrade.append({
+                                "name": pkg['name'],
+                                "current": pkg['version'],
+                                "latest": latest_version
+                            })
+                except Exception:
+                    pass # Ignore packages that can't be fetched
+
+    # Logic for --security-only
+    if security_only:
+        installed_packages = get_installed_packages()
+        with Halo(text="Scanning for vulnerabilities...", spinner="dots") as spinner:
+            for i, pkg in enumerate(installed_packages):
+                spinner.text = f"Scanning {pkg['name']} ({i+1}/{len(installed_packages)})"
+                if pkg['name'].lower() in ['pip', 'setuptools', 'wheel', 'pipq']:
+                    continue
+                try:
+                    results = validate_package(pkg['name'], config_obj, version=pkg['version'])
+                    if results.get("errors"):
+                         metadata = fetch_package_metadata(pkg['name'])
+                         latest_version = metadata.get("info", {}).get("version")
+                         if latest_version and latest_version != pkg['version']:
+                            # Check if the latest version is secure
+                            latest_results = validate_package(pkg['name'], config_obj, version=latest_version)
+                            if not latest_results.get("errors"):
+                                if not any(p['name'] == pkg['name'] for p in to_upgrade):
+                                    to_upgrade.append({
+                                        "name": pkg['name'],
+                                        "current": pkg['version'],
+                                        "latest": latest_version
+                                    })
+                except Exception:
+                    pass
+
+    if not to_upgrade:
+        console.print("[green]Everything is up-to-date and secure.[/green]")
+        return
+
+    # Display what will be upgraded
+    table = Table(title="Packages to Upgrade")
+    table.add_column("Package", style="cyan")
+    table.add_column("Current", style="red")
+    table.add_column("Latest", style="green")
+    for pkg in to_upgrade:
+        table.add_row(pkg["name"], pkg["current"], pkg["latest"])
+    console.print(table)
+
+    if dry_run:
+        console.print("\n[bold yellow]--dry-run enabled. No packages will be upgraded.[/bold yellow]")
+        return
+
+    # Get confirmation and validate before upgrade
+    if click.confirm("\nDo you want to proceed with the upgrade?"):
+        validated_to_upgrade = []
+        for pkg in to_upgrade:
+            console.print(f"\n[bold blue]Validating {pkg['name']}=={pkg['latest']} before upgrade...[/bold blue]")
+            results = validate_package(pkg['name'], config_obj, version=pkg['latest'])
+            _display_results([results], show_summary=False)
+            if not results.get("errors"):
+                validated_to_upgrade.append(pkg['name'])
+            else:
+                console.print(f"[red]Skipping upgrade for {pkg['name']} due to validation errors.[/red]")
+
+        if validated_to_upgrade:
+            _run_pip_install(validated_to_upgrade, upgrade=True)
+
+
+@main.command()
+@click.argument("package", type=str, required=True)
+@click.option("--config", type=click.Path(exists=True), help="Path to config file")
+def info(package: str, config: Optional[str]) -> None:
+    """
+    Display detailed information and a security profile for a package.
+    """
+    config_obj = Config(config_path=config)
+
+    console.print(f"[bold blue]Fetching information for {package}...[/bold blue]")
+    try:
+        results = validate_package(package, config_obj)
+        metadata = fetch_package_metadata(package) # We need the raw metadata again
+        info_data = metadata.get("info", {})
+
+        # Security Score (a simple heuristic for now)
+        score = 100
+        if results.get("errors"):
+            score -= 50 * len(results.get("errors"))
+        if results.get("warnings"):
+            score -= 10 * len(results.get("warnings"))
+        score_letter = "A+" if score >= 95 else "A" if score >= 90 else "B" if score >= 80 else "C" if score >= 70 else "D" if score >= 60 else "F"
+
+        panel_content = f"""
+[bold]Name[/bold]: {info_data.get('name', 'N/A')}
+[bold]Latest Version[/bold]: {info_data.get('version', 'N/A')}
+[bold]Summary[/bold]: {info_data.get('summary', 'N/A')}
+[bold]License[/bold]: {info_data.get('license', 'N/A')}
+[bold]Requires Python[/bold]: {info_data.get('requires_python', 'N/A')}
+[bold]Homepage[/bold]: {info_data.get('home_page', 'N/A')}
+
+[bold]Security Score[/bold]: {score_letter} ({max(0, score)}/100)
+"""
+        # Extract specific validator info
+        for res in results.get("validator_results", []):
+            if res['name'] == 'GPGValidator':
+                panel_content += f"[bold]GPG Signed[/bold]: {'Yes ✅' if not res.get('errors') else 'No ❌'}\n"
+            if res['name'] == 'MaintainerValidator':
+                panel_content += f"[bold]Maintainers[/bold]: {res.get('info', {}).get('maintainer_count', 'N/A')}\n"
+
+        console.print(Panel(panel_content.strip(), title=f"pipq info for {package}", expand=False))
+
+        # Display issues found
+        _display_results([results], show_summary=True)
+
+    except Exception as e:
+        console.print(f"[red]Could not retrieve information for {package}: {e}[/red]")
+
+
+@main.command(name="search")
+@click.argument("query", type=str, required=True)
+def search_packages(query: str) -> None:
+    """
+    Search for packages on PyPI with security scoring.
+
+    This is a placeholder and uses an external search to find packages.
+    """
+    console.print(f"[bold blue]Searching for '{query}' on PyPI...[/bold blue]")
+    console.print("[yellow]Note: Search functionality is experimental.[/yellow]")
+
+    # This is a creative workaround as there's no simple PyPI search API
+    # In a real-world scenario, we'd use a more robust method.
+    try:
+        import re
+        from googlesearch import search
+    except ImportError:
+        console.print("[red]Error: 'google' package not installed. Please run 'pip install beautifulsoup4 google'[/red]")
+        return
+
+    table = Table(title=f"Search results for '{query}'")
+    table.add_column("Package", style="cyan")
+    table.add_column("Version", style="magenta")
+    table.add_column("Summary")
+
+    try:
+        search_results = search(f"site:pypi.org {query}", num_results=10)
+        pypi_urls = [url for url in search_results if "pypi.org/project/" in url]
+
+        for url in pypi_urls:
+            match = re.search(r"pypi.org/project/([^/]+)", url)
+            if match:
+                package_name = match.group(1)
+                try:
+                    metadata = fetch_package_metadata(package_name)
+                    info = metadata.get("info", {})
+                    table.add_row(
+                        info.get("name", "N/A"),
+                        info.get("version", "N/A"),
+                        info.get("summary", "")
+                    )
+                except Exception:
+                    continue # Ignore if metadata fetch fails
+        console.print(table)
+    except Exception as e:
+        console.print(f"[red]Search failed: {e}[/red]")
+
+
+# Add aliases
+main.add_alias('i', 'install')
+main.add_alias('ls', 'list')
+main.add_alias('s', 'search')
 
 
 if __name__ == "__main__":
