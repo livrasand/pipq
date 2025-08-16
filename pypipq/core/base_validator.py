@@ -22,18 +22,22 @@ class BaseValidator(ABC):
     category: str = "General"
     description: str = "No description provided"
     
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: "Config") -> None:
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: "Config", extracted_path: Optional[str] = None, downloaded_file_path: Optional[str] = None) -> None:
         """
         Initialize the validator with package information.
         
         Args:
-            pkg_name: Name of the package being validated
-            metadata: Package metadata from PyPI API
+            pkg_name: Name of the package being validated.
+            metadata: Package metadata from PyPI API.
             config: The configuration object.
+            extracted_path: The path to the extracted package contents.
+            downloaded_file_path: The path to the downloaded package file.
         """
         self.pkg_name = pkg_name
         self.metadata = metadata
         self.config = config
+        self.extracted_path = extracted_path
+        self.downloaded_file_path = downloaded_file_path
         self.errors: List[str] = []
         self.warnings: List[str] = []
         self.info: Dict[str, Any] = {}

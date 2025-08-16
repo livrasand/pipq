@@ -4,7 +4,12 @@ Core validation pipeline for pypipq.
 import os
 import pkgutil
 import inspect
-from typing import List, Dict, Any, Type
+import tempfile
+import shutil
+import tarfile
+import zipfile
+from pathlib import Path
+from typing import List, Dict, Any, Type, Tuple, Optional
 import requests
 
 from .config import Config
@@ -32,6 +37,59 @@ def discover_validators() -> List[Type[BaseValidator]]:
             if issubclass(item, BaseValidator) and item is not BaseValidator:
                 validators.append(item)
     return validators
+
+def _get_latest_dist_url(metadata: Dict[str, Any]) -> str:
+    """Get the URL for the latest distribution file."""
+    releases = metadata.get("releases", {})
+    latest_version = metadata.get("info", {}).get("version")
+    if not latest_version or latest_version not in releases:
+        return None
+
+    dist_files = releases[latest_version]
+    if not dist_files:
+        return None
+
+    # Prefer wheel files, but fall back to source distributions
+    for f in dist_files:
+        if f.get("packagetype") == "bdist_wheel":
+            return f.get("url")
+
+    for f in dist_files:
+        if f.get("packagetype") == "sdist":
+            return f.get("url")
+
+    return dist_files[0].get("url") if dist_files else None
+
+def _download_and_extract_package(url: str, temp_dir: str) -> Tuple[Optional[str], Optional[str]]:
+    """Downloads a package and extracts it to a subdirectory."""
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+
+        downloaded_file_path = Path(temp_dir) / Path(url).name
+        with open(downloaded_file_path, "wb") as f:
+            shutil.copyfileobj(response.raw, f)
+
+        extract_dir = Path(temp_dir) / "extracted"
+        extract_dir.mkdir()
+
+        if downloaded_file_path.name.endswith((".whl", ".zip")):
+            with zipfile.ZipFile(downloaded_file_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+        elif downloaded_file_path.name.endswith(".tar.gz"):
+            with tarfile.open(downloaded_file_path, "r:gz") as tar:
+                tar.extractall(path=extract_dir)
+        elif downloaded_file_path.name.endswith(".tar.bz2"):
+             with tarfile.open(downloaded_file_path, "r:bz2") as tar:
+                tar.extractall(path=extract_dir)
+        else:
+            return str(downloaded_file_path), None
+
+        return str(downloaded_file_path), str(extract_dir)
+
+    except (requests.exceptions.RequestException, tarfile.TarError, zipfile.BadZipFile) as e:
+        print(f"Warning: Could not download or extract package from {url}: {e}")
+        return None, None
 
 
 def validate_package(pkg_name: str, config: Config, validated_packages: set = None, depth: int = 0) -> Dict[str, Any]:
@@ -66,16 +124,35 @@ def validate_package(pkg_name: str, config: Config, validated_packages: set = No
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f"Failed to fetch metadata for '{pkg_name}': {e}")
 
-    # 2. Discover and instantiate validators
-    all_validators = discover_validators()
-    enabled_validators = [v(pkg_name, metadata, config) for v in all_validators if config.is_validator_enabled(v.name)]
+    validator_results = []
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # 2. Download and extract package
+        downloaded_file_path, extracted_path = None, None
+        dist_url = _get_latest_dist_url(metadata)
+        if dist_url:
+            downloaded_file_path, extracted_path = _download_and_extract_package(dist_url, temp_dir)
 
-    # 3. Run validators and aggregate results
-    validator_results = [v.validate() for v in enabled_validators]
+        # 3. Discover and instantiate validators
+        all_validators = discover_validators()
+        enabled_validators = [
+            v(
+                pkg_name,
+                metadata,
+                config,
+                extracted_path=extracted_path,
+                downloaded_file_path=downloaded_file_path
+            )
+            for v in all_validators
+            if config.is_validator_enabled(v.name)
+        ]
+
+        # 4. Run validators and aggregate results
+        validator_results = [v.validate() for v in enabled_validators]
+
     aggregated_errors = [err for res in validator_results for err in res.get("errors", [])]
     aggregated_warnings = [warn for res in validator_results for warn in res.get("warnings", [])]
 
-    # 4. Recursively validate dependencies
+    # 5. Recursively validate dependencies
     dependencies = []
     for res in validator_results:
         if res.get("info", {}).get("dependencies"):
