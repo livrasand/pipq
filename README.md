@@ -2,7 +2,7 @@
 
 A secure pip proxy that analyzes Python packages before installation to detect potential security issues and risks.
 
-![PyPI](https://img.shields.io/pypi/v/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq)](https://pepy.tech/projects/pypipq) 
+![PyPI](https://img.shields.io/pypi/v/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq)](https://pepy.tech/projects/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq/week)](https://pepy.tech/projects/pypipq)
 
 ## Overview
 
