@@ -36,6 +36,7 @@ dependencies = [
     "tomli>=1.2.0; python_version<'3.11'",
     "python-whois>=0.9.5",
     "python-gnupg>=0.5.5",
+    "portalocker>=2.0.0",
 ]
 
 [project.optional-dependencies]

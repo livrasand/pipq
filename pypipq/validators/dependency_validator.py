@@ -15,7 +15,7 @@ class DependencyValidator(BaseValidator):
         dependencies = []
         if requires_dist:
             # Use regex to extract only the package name, removing version specifiers, semicolons, and extras
-            dependencies = [re.split(r"[<>=!~;[\] ]", d)[0] for d in requires_dist]
+            dependencies = [p for p in (re.split(r"[<>=!~;[\] ]", d)[0] for d in requires_dist) if p]
             if len(dependencies) > 20: # Arbitrary threshold for now
                 self.add_warning(f"Package has a large number of dependencies ({len(dependencies)}). This could increase the attack surface.")
         
