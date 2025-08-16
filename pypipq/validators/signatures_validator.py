@@ -10,7 +10,7 @@ class SignaturesValidator(BaseValidator):
     category = "Security"
     description = "Compares registry signatures."
 
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, **kwargs) -> None:
         super().__init__(pkg_name, metadata, config)
 
     def _validate(self) -> None:

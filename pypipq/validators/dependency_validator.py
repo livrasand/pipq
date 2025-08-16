@@ -4,7 +4,7 @@ from typing import Dict, Any
 import re
 
 class DependencyValidator(BaseValidator):
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, **kwargs) -> None:
         super().__init__(pkg_name, metadata, config)
         self.name = "Dependency Validator"
         self.description = "Analyzes package dependencies for potential security issues."

@@ -4,7 +4,7 @@ from ..core.config import Config
 from typing import Dict, Any
 
 class SizeValidator(BaseValidator):
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, **kwargs) -> None:
         super().__init__(pkg_name, metadata, config)
         self.name = "Size Validator"
         self.description = "Checks for abnormally large package sizes."

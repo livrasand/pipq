@@ -24,11 +24,12 @@ class AgeValidator(BaseValidator):
     name = "Age"
     category = "Quality"
     description = "Checks package age and release patterns"
-    
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, **kwargs) -> None:
         super().__init__(pkg_name, metadata, config)
         self.NEW_PACKAGE_DAYS = self.config.get("validators.Age.new_package_days", 7)
         self.OLD_PACKAGE_DAYS = self.config.get("validators.Age.old_package_days", 365 * 2)
+
 
     def _validate(self) -> None:
         """Check package age and release patterns."""

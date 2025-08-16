@@ -14,7 +14,7 @@ class LicenseValidator(BaseValidator):
     category = "Legal & Compliance"
     description = "Checks for missing, ambiguous, or restrictive licenses."
 
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config) -> None:
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, **kwargs) -> None:
         super().__init__(pkg_name, metadata, config)
         self.RESTRICTIVE_LICENSES = self.config.get("validators.License.restrictive_licenses", [
             "AGPL", "GPL", "Affero", "General Public License", "LGPL"
