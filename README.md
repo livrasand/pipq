@@ -1,18 +1,21 @@
 # pipq
 
-A secure pip proxy that analyzes Python packages before installation to detect potential security issues and risks.
-
 ![PyPI](https://img.shields.io/pypi/v/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq)](https://pepy.tech/projects/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq/week)](https://pepy.tech/projects/pypipq)
 
-## Overview
+A secure pip proxy that analyzes Python packages before installation to detect potential security issues and risks.
 
-pipq is a command-line tool that acts as a security layer between you and pip. It intercepts package installation requests, analyzes packages for potential security threats, and provides warnings or blocks installation based on configurable security policies.
-
-## Installation
-
+Install:
 ```bash
 pip install pypipq
 ````
+
+## Overview
+
+> [!WARNING]
+> pipq is experimental and offers no API or CLI compatibility guarantees.
+
+pipq is a command-line tool that acts as a security layer between you and pip. It intercepts package installation requests, analyzes packages for potential security threats, and provides warnings or blocks installation based on configurable security policies.
+
 
 ## Usage
 
