@@ -301,3 +301,6 @@ class ScriptsValidator(BaseValidator):
 | UX / Configuration       | 85%         | 15%     | -       |
 
 Overall, about 75–80% of core features are already implemented in version 0.3.0. The foundation is strong, with most critical security checks fully operational.
+
+## Author
+Livrädo Sandoval · [livrasand@gmail.com](mailto:livrasand@gmail.com)
