@@ -1,9 +1,6 @@
-"""
-Core pypipq modules.
-"""
+"""Core components for the pypipq application.
 
-from .validator import validate_package, discover_validators
-from .config import Config
-from .base_validator import BaseValidator
-
-__all__ = ["validate_package", "discover_validators", "Config", "BaseValidator"]
+This package contains the fundamental building blocks of the validation
+engine, including the base class for all validators, the configuration
+manager, and the main validation orchestrator.
+"""

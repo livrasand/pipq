@@ -1,8 +1,6 @@
-"""
-Utility modules for pypipq.
-"""
+"""Utility modules for the pypipq application.
 
-from .pypi import fetch_package_metadata, get_package_info, get_release_info, check_package_exists
-from .cache_manager import CacheManager
-
-__all__ = ["fetch_package_metadata", "get_package_info", "get_release_info", "check_package_exists", "CacheManager"]
+This package contains various helper modules for tasks such as interacting
+with the PyPI API, managing caches, handling the local environment, and
+accessing the vulnerability database.
+"""

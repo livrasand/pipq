@@ -1,129 +1,133 @@
-"""
-Release age validator for supply chain security.
-"""
+"""Enforces a minimum age for package releases to mitigate supply chain attacks.
 
-from datetime import datetime, timedelta
-import re
-from typing import Dict, Any, Optional, List
+A common tactic in supply chain attacks is to publish a malicious package and
+hope for its immediate adoption before it can be detected. By enforcing a
+"quarantine" period, this validator gives the security community time to
+discover and report potentially harmful packages.
+"""
+from datetime import datetime
+from typing import Dict, Any, Optional
+
 from ..core.base_validator import BaseValidator
 from ..core.config import Config
 
 
 class ReleaseAgeValidator(BaseValidator):
-    """
-    Validator that enforces minimum release age policies.
+    """Validator that enforces minimum release age policies.
+
+    This validator checks the age of a package's latest release against a
+    configurable policy. It supports a global default age, a list of excluded
+    packages (which can use wildcards), and specific policies for individual
+    packages or groups of packages.
     """
 
     name = "ReleaseAge"
     category = "Supply Chain Security"
-    description = "Enforces minimum release age to prevent supply chain attacks"
+    description = "Enforces a minimum age for releases to mitigate fast-moving supply chain attacks."
 
     def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, **kwargs) -> None:
+        """Initializes the ReleaseAgeValidator."""
         super().__init__(pkg_name, metadata, config, **kwargs)
-
-        # Configuración por defecto
-        self.default_min_age = self.config.get("security.minimum_release_age", 0)  # 0 = deshabilitado
+        # Default policy (in minutes), 0 means disabled.
+        self.default_min_age = self.config.get("security.minimum_release_age", 0)
         self.exclude_patterns = self.config.get("security.minimum_release_age_exclude", [])
         self.package_policies = self.config.get("security.package_policies", {})
 
     def _validate(self) -> None:
-        """Valida la edad de la versión del paquete."""
-
-        if self.default_min_age == 0:
-            self.add_info("Release Age Check", "Disabled")
+        """Validates the age of the current package version."""
+        if self.default_min_age == 0 and not self.package_policies:
+            self.add_info("Release Age Check", "Disabled globally and no specific policies are set.")
             return
 
-        # Verificar si el paquete está excluido
         if self._is_package_excluded():
-            self.add_info("Release Age Check", f"Excluded from age restrictions")
+            self.add_info("Release Age Check", "Package is excluded from age restrictions.")
             return
 
-        # Obtener la política específica para este paquete
         min_age_minutes = self._get_package_policy()
-
         if min_age_minutes == 0:
-            self.add_info("Release Age Check", "No age restriction for this package")
+            self.add_info("Release Age Check", "No age restriction applies to this package.")
             return
 
-        # Obtener la fecha de publicación
-        upload_time = self._get_upload_time()
-        if not upload_time:
-            self.add_warning("Cannot determine package release time")
+        upload_time_str = self._get_upload_time()
+        if not upload_time_str:
+            self.add_warning("Could not determine the package's release time to check its age.")
             return
 
         try:
-            release_time = datetime.fromisoformat(upload_time.replace("Z", "+00:00"))
+            release_time = datetime.fromisoformat(upload_time_str.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
-            self.add_warning("Cannot parse package release time")
+            self.add_warning(f"Could not parse the package's release time: {upload_time_str}")
             return
 
-        # Calcular la edad
         now = datetime.now(release_time.tzinfo)
         age_minutes = (now - release_time).total_seconds() / 60
-
         required_age_hours = min_age_minutes / 60
         actual_age_hours = age_minutes / 60
 
         if age_minutes < min_age_minutes:
             self.add_error(
-                f"Package version is too new! Released {actual_age_hours:.1f} hours ago, "
-                f"but policy requires minimum {required_age_hours:.1f} hours. "
-                f"This helps protect against supply chain attacks."
+                f"Package version is too new. It was released {actual_age_hours:.1f} hours ago, "
+                f"but the current policy requires a minimum age of {required_age_hours:.1f} hours. "
+                "This delay helps protect against fast-moving supply chain attacks."
             )
         else:
-            self.add_info("Release Age", f"OK ({actual_age_hours:.1f} hours old)")
+            self.add_info("Release Age", f"OK ({actual_age_hours:.1f} hours old, policy is {required_age_hours:.1f} hours)")
 
     def _is_package_excluded(self) -> bool:
-        """Verifica si el paquete está en la lista de exclusión."""
-        pkg_name = self.pkg_name.lower()
+        """Checks if the package matches any of the exclusion patterns.
 
+        Returns:
+            bool: True if the package is excluded, False otherwise.
+        """
         for pattern in self.exclude_patterns:
-            # Soporte para patrones con asterisco
-            if pattern.endswith('*'):
-                if pkg_name.startswith(pattern[:-1].lower()):
-                    return True
-            elif pattern.startswith('@') and pattern.endswith('/*'):
-                # Soporte para scoped packages: @myorg/*
-                scope = pattern[1:-2].lower()
-                if pkg_name.startswith(f"{scope}/"):
-                    return True
-            elif pkg_name == pattern.lower():
+            if self._matches_pattern(self.pkg_name, pattern):
                 return True
-
         return False
 
     def _get_package_policy(self) -> int:
-        """Obtiene la política específica para este paquete."""
-        pkg_name = self.pkg_name.lower()
+        """Gets the specific age policy for this package, or the default.
 
-        # Buscar políticas específicas
+        Returns:
+            int: The minimum required age in minutes for the package.
+        """
+        # Find the most specific matching policy.
         for pattern, policy in self.package_policies.items():
-            if self._matches_pattern(pkg_name, pattern):
+            if self._matches_pattern(self.pkg_name, pattern):
                 return policy.get("minimum_release_age", self.default_min_age)
-
         return self.default_min_age
 
     def _matches_pattern(self, pkg_name: str, pattern: str) -> bool:
-        """Verifica si un paquete coincide con un patrón."""
-        if pattern.endswith('*'):
-            return pkg_name.startswith(pattern[:-1].lower())
-        elif pattern.startswith('@') and pattern.endswith('/*'):
-            scope = pattern[1:-2].lower()
-            return pkg_name.startswith(f"{scope}/")
-        else:
-            return pkg_name == pattern.lower()
+        """Checks if a package name matches a given policy pattern.
+
+        Supports exact matches and wildcard matches (e.g., `requests*`).
+
+        Args:
+            pkg_name (str): The name of the package.
+            pattern (str): The pattern to match against.
+
+        Returns:
+            bool: True if the name matches the pattern, False otherwise.
+        """
+        pkg_name_lower = pkg_name.lower()
+        pattern_lower = pattern.lower()
+        if pattern_lower.endswith('*'):
+            return pkg_name_lower.startswith(pattern_lower[:-1])
+        return pkg_name_lower == pattern_lower
 
     def _get_upload_time(self) -> Optional[str]:
-        """Obtiene la fecha de publicación de la versión actual."""
+        """Gets the upload time of the package's latest version.
+
+        Returns:
+            Optional[str]: The ISO 8601 timestamp of the upload, or None.
+        """
         version = self.get_metadata_field("version")
         if not version:
             return None
 
         releases = self.metadata.get("releases", {})
         version_files = releases.get(version, [])
-
         if not version_files:
             return None
 
-        # Tomar la fecha del primer archivo de esta versión
+        # Return the upload time of the first file listed for this version.
         return version_files[0].get("upload_time_iso_8601")

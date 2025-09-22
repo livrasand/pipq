@@ -1,31 +1,36 @@
-"""
-Typosquatting detection validator.
+"""Detects packages with names similar to popular packages.
 
-Detects packages with names similar to popular packages that might be
-attempting to masquerade as legitimate packages.
+Typosquatting is a common attack vector where a malicious package is named
+very similarly to a popular, legitimate one (e.g., `python-dateutil` vs.
+`python-datetutil`) to trick users into installing it. This validator
+compares the package name against a configurable list of popular packages
+to identify such attempts.
 """
-
 import difflib
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
+
 from ..core.base_validator import BaseValidator
 from ..core.config import Config
 
+
 class TyposquatValidator(BaseValidator):
+    """Detects potential typosquatting attempts by checking for name similarity.
+
+    This validator compares the package name against a list of well-known,
+    popular packages using string similarity and distance algorithms. It also
+    maintains a whitelist for legitimate packages that might otherwise be
+    flagged (e.g., `pytest-django`).
     """
-    Validator that detects potential typosquatting attempts.
-    
-    This validator checks if the package name is suspiciously similar to
-    well-known, popular packages that attackers commonly target.
-    """
-    
+
     name = "Typosquat"
     category = "Security"
-    description = "Detects packages with names similar to popular packages"
-    
-    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, extracted_path: Optional[str] = None, downloaded_file_path: Optional[str] = None) -> None:
-        super().__init__(pkg_name, metadata, config, extracted_path=extracted_path, downloaded_file_path=downloaded_file_path)
-        self.popular_packages = self.config.get("validators.Typosquat.popular_packages", {
+    description = "Detects packages with names deceptively similar to popular ones."
+
+    def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, **kwargs) -> None:
+        """Initializes the TyposquatValidator."""
+        super().__init__(pkg_name, metadata, config, **kwargs)
+        self.popular_packages = self.config.get("validators.Typosquat.popular_packages", [
             "requests", "urllib3", "setuptools", "certifi", "numpy", "pandas",
             "matplotlib", "scipy", "pillow", "cryptography", "pytz", "six",
             "python-dateutil", "pyyaml", "click", "jinja2", "markupsafe",
@@ -34,101 +39,84 @@ class TyposquatValidator(BaseValidator):
             "tensorflow", "torch", "scikit-learn", "beautifulsoup4", "lxml",
             "selenium", "pytest", "coverage", "tox", "black", "flake8", "mypy",
             "isort", "pre-commit", "pipenv", "poetry", "wheel", "twine",
-        })
-        self.whitelist = self.config.get("validators.Typosquat.whitelist", [
-            # Legitimate packages that are often flagged as typosquats
-            r"django-.*",
-            r"flask-.*",
-            r"pytest-.*",
+        ])
+        self.whitelist_patterns = self.config.get("validators.Typosquat.whitelist", [
+            r"django-.*", r"flask-.*", r"pytest-.*",
         ])
 
     def _validate(self) -> None:
-        """Check for potential typosquatting."""
-        pkg_name = self.pkg_name.lower()
-        
-        # Skip validation for packages that are actually popular
-        if pkg_name in self.popular_packages:
-            return
+        """Performs the typosquatting check."""
+        pkg_name_lower = self.pkg_name.lower()
 
-        # Skip validation for whitelisted packages
-        for pattern in self.whitelist:
-            if re.fullmatch(pattern, pkg_name):
-                self.add_info("Typosquat Check", f"'{pkg_name}' is whitelisted.")
+        if pkg_name_lower in self.popular_packages:
+            return  # The package is a known popular package.
+
+        for pattern in self.whitelist_patterns:
+            if re.fullmatch(pattern, pkg_name_lower):
+                self.add_info("Typosquat Check", f"'{self.pkg_name}' is whitelisted and skipped.")
                 return
-        
+
         suspicious_matches = []
-        
         for popular_pkg in self.popular_packages:
-            similarity = self._calculate_similarity(pkg_name, popular_pkg)
-            
-            # Check for high similarity (potential typosquatting)
-            if 0.6 <= similarity < 1.0:  # 60-99% similar
+            similarity = difflib.SequenceMatcher(None, pkg_name_lower, popular_pkg).ratio()
+            if 0.6 <= similarity < 1.0:  # Find names that are 60-99% similar.
                 suspicious_matches.append({
                     "target": popular_pkg,
                     "similarity": similarity,
-                    "distance": self._damerau_levenshtein(pkg_name, popular_pkg)
+                    "distance": self._damerau_levenshtein(pkg_name_lower, popular_pkg),
                 })
-        
-        # Sort by similarity (highest first)
+
+        if not suspicious_matches:
+            return
+
+        # Sort by highest similarity and report the top match.
         suspicious_matches.sort(key=lambda x: x["similarity"], reverse=True)
-        
-        # Report findings
-        if suspicious_matches:
-            top_match = suspicious_matches[0]
-            
-            if top_match["similarity"] >= 0.85:  # Very high similarity
-                self.add_error(
-                    f"Package name '{self.pkg_name}' is very similar to popular package "
-                    f"'{top_match['target']}' ({top_match['similarity']:.0%} similarity). "
-                    f"This could be a typosquatting attempt."
-                )
-            elif top_match["similarity"] >= 0.75:  # High similarity
-                self.add_warning(
-                    f"Package name '{self.pkg_name}' is similar to popular package "
-                    f"'{top_match['target']}' ({top_match['similarity']:.0%} similarity). "
-                    f"Please verify this is the intended package."
-                )
-            
-            # Add info about all suspicious matches
-            self.add_info("suspicious_matches", suspicious_matches[:3])  # Top 3 matches
-    
-    def _calculate_similarity(self, name1: str, name2: str) -> float:
-        """
-        Calculate similarity between two package names.
-        
-        Uses difflib.SequenceMatcher to get a similarity ratio.
-        """
-        return difflib.SequenceMatcher(None, name1, name2).ratio()
-    
+        top_match = suspicious_matches[0]
+
+        if top_match["similarity"] >= 0.85:
+            self.add_error(
+                f"Package name '{self.pkg_name}' is very similar to the popular package "
+                f"'{top_match['target']}' ({top_match['similarity']:.0%} similarity). "
+                "This could be a typosquatting attempt."
+            )
+        elif top_match["similarity"] >= 0.75:
+            self.add_warning(
+                f"Package name '{self.pkg_name}' is similar to the popular package "
+                f"'{top_match['target']}' ({top_match['similarity']:.0%} similarity). "
+                "Please verify that this is the intended package."
+            )
+
+        self.add_info("Top Typosquat Matches", suspicious_matches[:3])
+
     def _damerau_levenshtein(self, s1: str, s2: str) -> int:
-        """Calculate Damerau-Levenshtein distance including transpositions."""
+        """Calculates the Damerau-Levenshtein distance between two strings.
+
+        This distance metric is an extension of Levenshtein distance that also
+        considers the transposition of two adjacent characters as a single edit.
+
+        Args:
+            s1 (str): The first string.
+            s2 (str): The second string.
+
+        Returns:
+            int: The Damerau-Levenshtein distance.
+        """
         len1, len2 = len(s1), len(s2)
-        big_int = len1 + len2 + 1
+        d = {}
+        for i in range(-1, len1 + 1):
+            d[(i, -1)] = i + 1
+        for j in range(-1, len2 + 1):
+            d[(-1, j)] = j + 1
 
-        # Create matrix
-        H = [[big_int for _ in range(len2 + 2)] for _ in range(len1 + 2)]
-        H[0][0] = big_int
-
-        for i in range(1, len1 + 2):
-            H[i][0] = big_int
-            H[i][1] = i - 1
-        for j in range(1, len2 + 2):
-            H[0][j] = big_int
-            H[1][j] = j - 1
-
-        # Fill the matrix
-        for i in range(1, len1 + 1):
-            for j in range(1, len2 + 1):
-                cost = 0 if s1[i-1] == s2[j-1] else 1
-
-                H[i+1][j+1] = min(
-                    H[i][j+1] + 1,      # deletion
-                    H[i+1][j] + 1,      # insertion
-                    H[i][j] + cost      # substitution
+        for i in range(len1):
+            for j in range(len2):
+                cost = 0 if s1[i] == s2[j] else 1
+                d[(i, j)] = min(
+                    d[(i - 1, j)] + 1,       # Deletion
+                    d[(i, j - 1)] + 1,       # Insertion
+                    d[(i - 1, j - 1)] + cost, # Substitution
                 )
+                if i and j and s1[i] == s2[j - 1] and s1[i - 1] == s2[j]:
+                    d[(i, j)] = min(d[(i, j)], d[i - 2, j - 2] + cost) # Transposition
 
-                # Transposition
-                if i > 0 and j > 0 and s1[i-1] == s2[j-2] and s1[i-2] == s2[j-1]:
-                    H[i+1][j+1] = min(H[i+1][j+1], H[i-1][j-1] + cost)
-
-        return H[len1+1][len2+1]
+        return d[len1 - 1, len2 - 1]

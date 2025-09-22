@@ -1,76 +1,71 @@
-"""
-Validator for packages maintained by a single developer.
+"""Analyzes the maintainer information of a package.
 
-Detects packages with only one maintainer, indicating limited community support
-and higher risk of abandonment.
+This validator checks if a package appears to be maintained by a single
+individual, which can be a risk factor. A project with a single maintainer is
+more susceptible to abandonment and may lack the peer review and support of a
+larger community or organization.
 """
-
-from typing import Dict
-from ..core.base_validator import BaseValidator
-from ..core.config import Config
 from typing import Dict, Any
 
+from ..core.base_validator import BaseValidator
+from ..core.config import Config
+
+
 class MaintainerValidator(BaseValidator):
+    """Checks for packages that appear to have a single maintainer.
+
+    This validator uses heuristics to determine if a project is backed by an
+    organization or a community. If not, it checks if the author and maintainer
+    are the same, which suggests a single point of failure.
     """
-    Validator that checks for single maintainer projects.
-    
-    This validator flags packages that have only one maintainer or no
-    community support, indicating a higher risk of abandonment or sporadic updates.
-    """
-    
+
     name = "Maintainer"
     category = "Quality"
-    description = "Detects packages with a single maintainer or limited support"
-    
+    description = "Detects packages with a single maintainer or limited community support."
+
     def __init__(self, pkg_name: str, metadata: Dict[str, Any], config: Config, **kwargs) -> None:
-        super().__init__(pkg_name, metadata, config)
+        """Initializes the MaintainerValidator."""
+        super().__init__(pkg_name, metadata, config, **kwargs)
+        # Keywords that suggest a project is backed by an organization.
+        self.ORG_INDICATORS = self.config.get("validators.Maintainer.org_indicators", [
+            "pallets", "project", "foundation", "community", "organization", "labs", "inc"
+        ])
 
     def _validate(self) -> None:
-        """Check if the package is maintained by a single individual."""
-        
-        # Get author and maintainer information from metadata
-        author = self.get_metadata_field("author")
-        author = author.strip() if isinstance(author, str) else ""
-        author_email = self.get_metadata_field("author_email")
-        author_email = author_email.strip() if isinstance(author_email, str) else ""
-        maintainer = self.get_metadata_field("maintainer")
-        maintainer = maintainer.strip() if isinstance(maintainer, str) else ""
-        maintainer_email = self.get_metadata_field("maintainer_email")
-        maintainer_email = maintainer_email.strip() if isinstance(maintainer_email, str) else ""
+        """Performs the check for single-maintainer projects."""
+        author = str(self.get_metadata_field("author", "")).strip()
+        author_email = str(self.get_metadata_field("author_email", "")).strip()
+        maintainer = str(self.get_metadata_field("maintainer", "")).strip()
+        maintainer_email = str(self.get_metadata_field("maintainer_email", "")).strip()
         project_urls = self.get_metadata_field("project_urls", {})
 
-        # Heuristic to detect organization-backed projects
-        org_indicators = ["pallets", "project", "foundation", "community", "organization"]
-        
-        # Check project URLs for organization indicators
-        if project_urls and any(indicator in url.lower() for url in project_urls.values() for indicator in org_indicators):
-            self.add_info("project_urls", project_urls)
-            return # Likely an organization, so we can skip the rest of the checks
+        # Add maintainer info for transparency, regardless of the outcome.
+        self.add_info("author", author or "Not specified")
+        self.add_info("author_email", author_email or "Not specified")
+        self.add_info("maintainer", maintainer or "Not specified")
+        self.add_info("maintainer_email", maintainer_email or "Not specified")
 
-        # Check author/maintainer emails for organization indicators
-        if any(indicator in email.lower() for email in [author_email, maintainer_email] for indicator in org_indicators):
-            self.add_info("author_email", author_email)
-            self.add_info("maintainer_email", maintainer_email)
-            return # Likely an organization
+        # Heuristic 1: Check project URLs for organization indicators.
+        if project_urls and any(
+            indicator in url.lower() for url in project_urls.values() for indicator in self.ORG_INDICATORS
+        ):
+            self.add_info("Maintainer Status", "Likely maintained by an organization (based on project URLs).")
+            return
 
-        # Heuristic check: consider the package risky if maintainer is not specified
-        # or if author is the same as the maintainer with no additional support.
-        
-        if not maintainer or maintainer.lower() == "none":
+        # Heuristic 2: Check author/maintainer names and emails for indicators.
+        combined_info = f"{author} {author_email} {maintainer} {maintainer_email}".lower()
+        if any(indicator in combined_info for indicator in self.ORG_INDICATORS):
+            self.add_info("Maintainer Status", "Likely maintained by an organization (based on author/maintainer info).")
+            return
+
+        # Heuristic 3: Check if the project has a sole maintainer.
+        # This is triggered if maintainer is not specified, or is the same as the author.
+        if not maintainer or maintainer.lower() in (author.lower(), "none", ""):
             self.add_warning(
-                f"Package '{self.pkg_name}' is maintained solely by its author "
-                f"and lacks defined community support."
+                f"Package '{self.pkg_name}' appears to be maintained by a single individual or lacks "
+                "explicit community support, which can be a risk factor."
             )
-            
-        elif maintainer == author:
-            self.add_warning(
-                f"Package '{self.pkg_name}' is maintained by a single individual, "
-                f"'{maintainer}'."
-            )
-        
-        # Add informational data for transparency
-        self.add_info("maintainer", maintainer)
-        self.add_info("maintainer_email", maintainer_email)
-        self.add_info("author", author)
-        self.add_info("author_email", author_email)
-
+        elif author and maintainer and author.lower() != maintainer.lower():
+             self.add_info("Maintainer Status", f"The package has a distinct author ({author}) and maintainer ({maintainer}).")
+        else:
+            self.add_info("Maintainer Status", f"The package is maintained by '{maintainer}'.")

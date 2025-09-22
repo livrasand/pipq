@@ -2,6 +2,13 @@
 Validators for pypipq.
 Each validator should inherit from BaseValidator.
 """
+"""A collection of security and quality validators for Python packages.
+
+This package contains all the individual validator implementations that are
+dynamically discovered and run by the core validation engine. Each module in
+this package should contain one or more classes that inherit from
+`pypipq.core.base_validator.BaseValidator`.
+"""
 from .age import AgeValidator
 from .cryptographic_validator import CryptographicValidator
 from .dependency_validator import DependencyValidator

@@ -39,17 +39,19 @@ pipq offers a robust suite of security validations to protect against various th
 - **Provenance Analysis**: Checks for valid source repositories and adherence to modern packaging standards (e.g., `pyproject.toml`).
 - **Static Code Analysis**: Scans source code for dangerous patterns like `eval()`, `exec()`, and suspicious API usage without executing code.
 - **Vulnerability Scanning**: Queries databases like OSV for known vulnerabilities.
-- **Malware Scanning**: Uses VirusTotal API to detect malware in package files.
+- **Malware Scanning**: Scans for suspicious code patterns and uses the VirusTotal API to detect known malware.
+- **Dependency Analysis**: Checks for circular dependencies and an excessive number of dependencies.
+- **Cryptographic Signature Verification**: Verifies GPG signatures and checks for the presence of modern TUF and Sigstore signatures.
 
 ### User Experience
 - Rich terminal interface with color-coded output and progress indicators.
 - Interactive prompts for security decisions.
-- Multiple operation modes: silent, warn, or block.
+- Multiple operation modes: `interactive`, `silent`, or `block`.
 - Comprehensive configuration via TOML files and environment variables.
 
 ## Installation
 
-To install pipq, ensure you have Python 3.8+ and pip installed. Run the following command:
+To install `pypipq`, ensure you have Python 3.8+ and pip installed. Run the following command:
 
 ```bash
 pip install pypipq
@@ -200,6 +202,33 @@ export VIRUSTOTAL_API_KEY="your_new_api_key"
 
 pipq enhances overall software supply chain security by providing proactive threat detection and risk assessment.
 
+## Validators
+
+`pypipq` includes a comprehensive suite of validators to inspect different aspects of a package's quality and security.
+
+| Validator | Category | Description |
+| --- | --- | --- |
+| **Age** | Quality | Checks if a package is suspiciously new or old and unmaintained. |
+| **Cryptographic** | Cryptographic Integrity | Verifies GPG signatures of downloaded packages. |
+| **Dependency** | Risk | Analyzes package dependencies for potential issues. |
+| **ExpiredDomains** | Security | Checks for expired domains in maintainer and author emails. |
+| **GPG** | Security | Checks for the presence of GPG signatures in package releases. |
+| **Integrity** | Package Integrity | Verifies that the downloaded package's hash matches the one listed in PyPI. |
+| **License** | Legal & Compliance | Checks for missing, ambiguous, or restrictive licenses. |
+| **Maintainer** | Quality | Detects packages with a single maintainer or limited community support. |
+| **MalwareDetector** | Security | Scans package files for suspicious patterns indicative of malware. |
+| **NewBinaries** | Security | *Placeholder:* Detects if a new version of a package introduces new binary files. |
+| **Popularity** | Community | Checks the download popularity of a package via the Pepy.tech API. |
+| **Provenance** | Security | Verifies package provenance from its repository and build files. |
+| **ReleaseAge** | Supply Chain Security | Enforces a minimum age for releases to mitigate fast-moving supply chain attacks. |
+| **InstallScripts** | Security | *Placeholder:* Detects the presence of potentially malicious pre- or post-installation scripts. |
+| **Signatures** | Cryptographic Integrity | Checks for modern package signatures (e.g., TUF, Sigstore). |
+| **Size** | Quality | Checks for abnormally large package sizes, which could indicate bundled binaries. |
+| **Source** | Community | Analyzes the source code repository for activity and health metrics. |
+| **StaticAnalysis** | Security | Scans package for malware and suspicious code patterns. |
+| **Typosquat** | Security | Detects packages with names deceptively similar to popular ones. |
+| **Vulnerabilities** | Security | Checks for known vulnerabilities using multiple advisory databases. |
+
 ## Practical Examples
 
 ### Example 1: Installing a Popular Package
@@ -280,23 +309,24 @@ pipq is built on a modular validator system. Each security check is an independe
 - **Cryptographic Signatures**: GPG detection, partial verification.
 
 ### Not Implemented
-- Enhanced security validations (e.g., new binary checks, install scripts).
+- Enhanced security validations (e.g., new binary checks, install scripts are currently placeholders).
 - Python Advisory Database integration.
 - Advanced repository analysis (commit frequency, contributor diversity).
 - Detailed reporting (audit trails, historical tracking).
 
-| Category                 | Implemented | Partial | Planned |
-| ------------------------ | ----------- | ------- | ------- |
-| Static Analysis          | 95%         | -       | 5%      |
-| Integrity Verification   | 100%        | -       | -       |
-| Provenance Checks        | 90%         | -       | 10%     |
-| Vulnerability Databases  | 80%         | -       | 20%     |
-| Malware Detection        | 60%         | 40%     | -       |
-| Repository Analysis      | 70%         | 30%     | -       |
-| Cryptographic Signatures | 30%         | 70%     | -       |
-| UX / Configuration       | 85%         | 15%     | -       |
+| Category | Implemented | Partial | Planned | Notes |
+| :--- | :---: | :---: | :---: | :--- |
+| **Core Engine** | 95% | - | 5% | Core validation logic is robust. |
+| **Static Analysis** | 80% | 15% | 5% | AST parsing is solid; sandboxing is experimental. |
+| **Integrity Checks** | 100% | - | - | SHA256 and HTTPS checks are fully implemented. |
+| **Provenance & Source**| 85% | 10% | 5% | Good support for GitHub; other platforms are basic. |
+| **Vulnerability DBs** | 90% | - | 10% | OSV, SafetyDB, and Snyk integration is complete. |
+| **Malware Detection** | 50% | 50% | - | Basic pattern matching and VirusTotal API are implemented. |
+| **Crypto Signatures** | 40% | 60% | - | GPG verification is functional; TUF/Sigstore are basic checks. |
+| **Community & Quality**| 90% | - | 10% | Age, popularity, license, and maintainer checks are solid. |
+| **CLI & UX** | 90% | 10% | - | Most commands are implemented; reporting can be improved. |
 
-Overall, 75–80% of core features are implemented in version 0.3.0.
+Overall, 80-85% of core features are implemented in version 0.4.0.
 
 ## Author
 

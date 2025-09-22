@@ -1,17 +1,11 @@
-"""
-pipq
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""pypipq: A secure pip proxy.
 
-A secure pip proxy that analyzes packages before installation to detect
-potential security issues, typosquatting, and other risks.
+This package provides a command-line tool to analyze Python packages for
+security vulnerabilities and other risks before installation.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "Livrädo Sandoval"
-__email__ = "livrasand@outlook.com"
-__license__ = "GPLv3"
+__license__ = "MIT"
 
-from .core.validator import validate_package
-from .core.config import Config
-
-__all__ = ["validate_package", "Config", "__version__"]
+__all__ = ["__version__", "__author__", "__license__"]
