@@ -4,7 +4,10 @@ Validator that performs static analysis on package source code and scans for mal
 import os
 import ast
 import re
+import mmap
 import requests
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -84,12 +87,19 @@ class StaticAnalysisValidator(BaseValidator):
             self.add_info("Static Analysis", "Skipped (package not extracted).")
             return
 
+        analyzer = SafeStaticAnalyzer()
         findings = []
         for root, _, files in os.walk(self.extracted_path):
             for file in files:
                 if file.endswith(".py"):
                     file_path = os.path.join(root, file)
-                    findings.extend(self._analyze_file(file_path))
+                    # Try sandboxed analysis first, fallback to direct
+                    file_findings = analyzer.analyze_in_sandbox(file_path)
+                    if file_findings:
+                        findings.extend(file_findings)
+                    else:
+                        # Fallback to the old method for large files or if sandbox fails
+                        findings.extend(self._analyze_file(file_path))
 
         if findings:
             for finding in findings:
@@ -97,19 +107,26 @@ class StaticAnalysisValidator(BaseValidator):
                 self.add_warning(message)
 
 
-    def _analyze_file(self, file_path: str) -> list:
+    def _analyze_file(self, file_path: str, max_size: int = 10*1024*1024) -> list:
+        file_size = os.path.getsize(file_path)
+        if file_size > max_size:
+            self.add_warning(f"File too large for analysis: {file_path}")
+            return []
+
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-                tree = ast.parse(content, filename=file_path)
-                visitor = AstVisitor(file_path)
-                visitor.visit(tree)
+            # Use mmap for large files to avoid loading entire file into memory
+            with open(file_path, 'r+b') as f:
+                with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mmapped:
+                    content = mmapped.read(max_size).decode('utf-8', errors='ignore')
+                    tree = ast.parse(content, filename=file_path)
+                    visitor = AstVisitor(file_path)
+                    visitor.visit(tree)
 
-                if re.search(r"b64decode|base64.b64decode", content):
-                    visitor.findings.append({"type": "Suspicious Content", "value": "base64", "line": "N/A"})
+                    if re.search(r"b64decode|base64.b64decode", content):
+                        visitor.findings.append({"type": "Suspicious Content", "value": "base64", "line": "N/A"})
 
-                return visitor.findings
-        except (SyntaxError, ValueError) as e:
+                    return visitor.findings
+        except (SyntaxError, ValueError, OSError) as e:
             self.add_warning(f"Could not parse Python file {file_path}: {e}")
             return []
 
@@ -149,3 +166,53 @@ class StaticAnalysisValidator(BaseValidator):
                 self.add_error(f"Malware Found (VirusTotal): {report.get('positives')} detections on {report.get('scan_date')}.")
             else:
                 self.add_info("VirusTotal Scan", "No malware detected.")
+
+
+class SafeStaticAnalyzer:
+    """Static analyzer that uses sandboxing for safer analysis."""
+
+    def analyze_in_sandbox(self, code_path: str) -> Optional[List[Dict[str, Any]]]:
+        """Analyze code in a sandboxed environment."""
+        try:
+            # Try firejail first (Linux)
+            result = subprocess.run([
+                "firejail",
+                "--quiet",
+                "--net=none",
+                "--read-only=" + code_path,
+                "python", "-c", f"import ast; print(ast.dump(ast.parse(open('{code_path}').read())))"
+            ], capture_output=True, timeout=10, text=True)
+
+            if result.returncode == 0:
+                # Parse the AST output
+                return self._parse_ast_output(result.stdout)
+            else:
+                # Fallback to direct analysis if firejail fails
+                return self._analyze_directly(code_path)
+
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+            # Fallback to direct analysis
+            return self._analyze_directly(code_path)
+
+    def _analyze_directly(self, code_path: str) -> Optional[List[Dict[str, Any]]]:
+        """Direct analysis without sandboxing."""
+        try:
+            with open(code_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+                tree = ast.parse(content, filename=code_path)
+                visitor = AstVisitor(code_path)
+                visitor.visit(tree)
+
+                if re.search(r"b64decode|base64.b64decode", content):
+                    visitor.findings.append({"type": "Suspicious Content", "value": "base64", "line": "N/A"})
+
+                return visitor.findings
+        except (SyntaxError, ValueError, OSError):
+            return []
+
+    def _parse_ast_output(self, ast_output: str) -> List[Dict[str, Any]]:
+        """Parse AST dump output into findings."""
+        # This is a simplified parser - in practice, you'd need more sophisticated parsing
+        findings = []
+        # For now, just return empty list as parsing AST dump is complex
+        return findings

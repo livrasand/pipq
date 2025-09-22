@@ -66,7 +66,7 @@ class TyposquatValidator(BaseValidator):
                 suspicious_matches.append({
                     "target": popular_pkg,
                     "similarity": similarity,
-                    "distance": self._levenshtein_distance(pkg_name, popular_pkg)
+                    "distance": self._damerau_levenshtein(pkg_name, popular_pkg)
                 })
         
         # Sort by similarity (highest first)
@@ -100,27 +100,35 @@ class TyposquatValidator(BaseValidator):
         """
         return difflib.SequenceMatcher(None, name1, name2).ratio()
     
-    def _levenshtein_distance(self, s1: str, s2: str) -> int:
-        """
-        Calculate Levenshtein distance between two strings.
-        
-        Returns the minimum number of single-character edits required
-        to change one string into another.
-        """
-        if len(s1) < len(s2):
-            return self._levenshtein_distance(s2, s1)
-        
-        if len(s2) == 0:
-            return len(s1)
-        
-        previous_row = list(range(len(s2) + 1))
-        for i, char1 in enumerate(s1):
-            current_row = [i + 1]
-            for j, char2 in enumerate(s2):
-                insertions = previous_row[j + 1] + 1
-                deletions = current_row[j] + 1
-                substitutions = previous_row[j] + (char1 != char2)
-                current_row.append(min(insertions, deletions, substitutions))
-            previous_row = current_row
-        
-        return previous_row[-1]
+    def _damerau_levenshtein(self, s1: str, s2: str) -> int:
+        """Calculate Damerau-Levenshtein distance including transpositions."""
+        len1, len2 = len(s1), len(s2)
+        big_int = len1 + len2 + 1
+
+        # Create matrix
+        H = [[big_int for _ in range(len2 + 2)] for _ in range(len1 + 2)]
+        H[0][0] = big_int
+
+        for i in range(1, len1 + 2):
+            H[i][0] = big_int
+            H[i][1] = i - 1
+        for j in range(1, len2 + 2):
+            H[0][j] = big_int
+            H[1][j] = j - 1
+
+        # Fill the matrix
+        for i in range(1, len1 + 1):
+            for j in range(1, len2 + 1):
+                cost = 0 if s1[i-1] == s2[j-1] else 1
+
+                H[i+1][j+1] = min(
+                    H[i][j+1] + 1,      # deletion
+                    H[i+1][j] + 1,      # insertion
+                    H[i][j] + cost      # substitution
+                )
+
+                # Transposition
+                if i > 0 and j > 0 and s1[i-1] == s2[j-2] and s1[i-2] == s2[j-1]:
+                    H[i+1][j+1] = min(H[i+1][j+1], H[i-1][j-1] + cost)
+
+        return H[len1+1][len2+1]

@@ -4,144 +4,154 @@
 
 A secure pip proxy that analyzes Python packages before installation to detect potential security issues and risks.
 
-Install:
-```bash
-pip install pypipq
-````
+## Table of Contents
 
-## Overview
+- [What is pipq?](#what-is-pipq)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Detailed Usage](#detailed-usage)
+- [Configuration](#configuration)
+- [Benefits](#benefits)
+- [Practical Examples](#practical-examples)
+- [FAQ](#faq)
+- [Architecture](#architecture)
+- [Implementation Status](#implementation-status)
+- [Author](#author)
+
+## What is pipq?
+
+pipq is a command-line security tool designed to enhance the safety of Python package installations. Acting as an intermediary between users and pip, pipq intercepts package installation requests, performs comprehensive security analyses, and provides actionable insights or blocks potentially harmful packages based on configurable policies. This tool is particularly valuable for developers, DevOps teams, and organizations seeking to mitigate risks associated with supply chain attacks, malware, and other security vulnerabilities in the Python ecosystem.
 
 > [!WARNING]
 > pipq is experimental and offers no API or CLI compatibility guarantees.
 
-pipq is a command-line tool that acts as a security layer between you and pip. It intercepts package installation requests, analyzes packages for potential security threats, and provides warnings or blocks installation based on configurable security policies.
+## Key Features
 
+pipq offers a robust suite of security validations to protect against various threats:
 
-## Usage
+### Package Analysis
+- **Typosquatting Detection**: Identifies packages with names similar to popular ones, which may be malicious imitations.
+- **Package Age Validation**: Flags newly created packages that could indicate supply chain attacks or very old packages lacking updates.
+- **Maintainer Analysis**: Assesses maintainer profiles, highlighting risks from single-maintainer packages.
+- **License Validation**: Ensures packages have valid, non-problematic licenses.
+- **Integrity Validation**: Verifies package integrity using SHA256 hashes against PyPI metadata.
+- **Provenance Analysis**: Checks for valid source repositories and adherence to modern packaging standards (e.g., `pyproject.toml`).
+- **Static Code Analysis**: Scans source code for dangerous patterns like `eval()`, `exec()`, and suspicious API usage without executing code.
+- **Vulnerability Scanning**: Queries databases like OSV for known vulnerabilities.
+- **Malware Scanning**: Uses VirusTotal API to detect malware in package files.
 
-Replace `pip install` with `pipq install`:
+### User Experience
+- Rich terminal interface with color-coded output and progress indicators.
+- Interactive prompts for security decisions.
+- Multiple operation modes: silent, warn, or block.
+- Comprehensive configuration via TOML files and environment variables.
 
-```bash
-pipq install <package-name>
-pipq check <package-name>
-pipq audit --json
-```
+## Installation
 
-### `pipq install` — Secure Installation
-
-```bash
-pipq install <package-name>           
-pipq install --dev                  
-pipq install --force <package-name> 
-pipq install --silent <package-name>
-pipq install --config /path/config.toml
-```
-
-### `pipq check` — Analyze Only (no install)
-
-```bash
-pipq check <package-name>
-pipq check <package-name>==<version>
-pipq check --deep <package-name>
-pipq check --depth 3 <package-name>
-pipq check --json <package-name>
-pipq check --md <package-name>
-pipq check --html <package-name>
-```
-
-### `pipq audit` — Full Environment Audit
+To install pipq, ensure you have Python 3.8+ and pip installed. Run the following command:
 
 ```bash
-pipq audit
-pipq audit --json
-pipq audit --html
-pipq audit --fix   # experimental self-healing
+pip install pypipq
 ```
 
-### `pipq list` — Security Status of Installed Packages
-
-```bash
-pipq list
-pipq list --vulnerable
-```
-
-### `pipq upgrade` — Secure Upgrades
-
-```bash
-pipq upgrade <package-name>
-pipq upgrade --all
-pipq upgrade --security-only
-pipq upgrade --dry-run --all
-```
-
-### `pipq info` — Detailed Security Profile
-
-```bash
-pipq info requests
-# shows: version, license, security score (A–F), GPG signatures, etc.
-```
-
-### `pipq config` — Manage Configuration
-
-```bash
-pipq config list
-pipq config get mode
-pipq config set mode block
-pipq config set auto_continue_warnings true
-pipq config reset
-```
-
-### `pipq search` — Security-Scored Package Search
-
-```bash
-pipq search <package-name>
-```
-
-### Aliases
-
-```bash
-pipq i <package-name>
-pipq ls              
-pipq s <package-name>
-```
-
-### Global Options
+After installation, verify the setup:
 
 ```bash
 pipq --version
-pipq --verbose
-pipq --debug
-pipq --help
 ```
 
-## Key Functionality
+## Quick Start
 
-### Implemented and Operational
+Replace standard `pip install` commands with `pipq install` for secure installations:
 
-#### Package Analysis
+```bash
+pipq install requests
+```
 
-* **Typosquatting Detection**: Identifies packages with names similar to popular packages that might be masquerading as legitimate libraries
-* **Package Age Validation**: Flags packages that are suspiciously new (potential supply chain attacks) or very old without updates (potential abandonment)
-* **Maintainer Analysis**: Detects packages maintained by a single individual, indicating higher risk of abandonment
-* **License Validation**: Detects missing or problematic licenses
-* **Integrity Validation**: Verifies package integrity by validating SHA256 hashes against PyPI metadata.
-* **Provenance Analysis**: Checks for a valid source repository URL and modern packaging standards (`pyproject.toml`).
-* **Static Code Analysis**: Performs static analysis on package source code to detect suspicious patterns like `eval()`, `exec()`, and suspicious API usage.
-* **Vulnerability Scanning**: Checks for known vulnerabilities using the OSV (Open Source Vulnerabilities) database.
-* **Malware Scanning**: Scans package files for malware using the VirusTotal API.
+pipq will analyze the package and proceed based on your configuration (warn, block, or silent mode).
 
-#### User Experience
+## Detailed Usage
 
-* Rich terminal interface with colored output and progress indicators
-* Interactive prompts for security decisions
-* Multiple operation modes: silent, warn, or block
-* Comprehensive configuration system via TOML files and environment variables
+### Secure Installation
+```bash
+pipq install <package-name>           # Install with security checks
+pipq install --dev                    # Install development dependencies
+pipq install --force <package-name>   # Force installation despite warnings
+pipq install --silent <package-name>  # Suppress output
+pipq install --config /path/config.toml  # Use custom config file
+```
 
-### Partially Implemented
+### Analyze Without Installing
+```bash
+pipq check <package-name>             # Basic analysis
+pipq check <package-name>==<version>  # Check specific version
+pipq check --deep <package-name>      # Deep dependency analysis
+pipq check --depth 3 <package-name>   # Limit analysis depth
+pipq check --json <package-name>      # Output in JSON format
+pipq check --md <package-name>        # Output in Markdown
+pipq check --html <package-name>      # Output in HTML
+```
 
-* **Vulnerability scanning**: While OSV integration is functional, planned integrations with Safety DB and the Python Advisory Database are not yet implemented.
+### Full Environment Audit
+```bash
+pipq audit                            # Audit installed packages
+pipq audit --json                     # JSON output
+pipq audit --html                     # HTML report
+pipq audit --fix                      # Experimental self-healing
+```
+
+### Security Status of Installed Packages
+```bash
+pipq list                             # List all packages with security status
+pipq list --vulnerable                # Show only vulnerable packages
+```
+
+### Secure Upgrades
+```bash
+pipq upgrade <package-name>           # Upgrade specific package securely
+pipq upgrade --all                    # Upgrade all packages
+pipq upgrade --security-only          # Upgrade only security-related updates
+pipq upgrade --dry-run --all          # Preview upgrades without applying
+```
+
+### Detailed Security Profile
+```bash
+pipq info requests                    # Shows version, license, security score (A–F), GPG signatures, etc.
+```
+
+### Configuration Management
+```bash
+pipq config list                      # List current settings
+pipq config get mode                  # Get specific setting
+pipq config set mode block            # Set operation mode to block
+pipq config set auto_continue_warnings true  # Auto-continue on warnings
+pipq config reset                     # Reset to defaults
+```
+
+### Security-Scored Package Search
+```bash
+pipq search <package-name>            # Search with security scores
+```
+
+### Aliases
+```bash
+pipq i <package-name>                 # Alias for install
+pipq ls                               # Alias for list
+pipq s <package-name>                 # Alias for search
+```
+
+### Global Options
+```bash
+pipq --version                        # Show version
+pipq --verbose                        # Verbose output
+pipq --debug                          # Debug mode
+pipq --help                           # Show help
+```
 
 ## Configuration
+
+pipq supports flexible configuration via TOML files and environment variables.
 
 Create `~/.config/pipq/config.toml`:
 
@@ -155,139 +165,125 @@ timeout = 30
 Or use environment variables:
 
 ```bash
-export PIPQ_MODE=block
-export PIPQ_DISABLE_VALIDATORS=age,maintainer
+export pipq_MODE=block
+export pipq_DISABLE_VALIDATORS=age,maintainer
 
 # API keys for MalwareValidator
 export VIRUSTOTAL_API_KEY="your_virustotal_api_key"
 ```
 
-### Getting a VirusTotal API Key
+### Obtaining a VirusTotal API Key
 
-To use the malware scanning features, you need a free VirusTotal API key. Here's how to get one:
+To enable malware scanning:
 
-1.  **Create a free account** on the [VirusTotal website](https://www.virustotal.com/gui/join-us).
-2.  **Sign in** to your account.
-3.  Click on your **username** in the top right corner and select **API Key**.
-4.  Copy your API key and set it as an environment variable:
+1. Create a free account on the [VirusTotal website](https://www.virustotal.com/gui/join-us).
+2. Sign in to your account.
+3. Click your username in the top right and select **API Key**.
+4. Copy the key and set it as an environment variable:
 
-    ```bash
-    export VIRUSTOTAL_API_KEY="your_new_api_key"
-    ```
+```bash
+export VIRUSTOTAL_API_KEY="your_new_api_key"
+```
+
+## Benefits
+
+### For Individuals
+- **Personal Security**: Protect your development environment from malicious packages that could compromise your data or system.
+- **Awareness**: Gain insights into package risks, helping you make informed decisions.
+- **Ease of Use**: Seamlessly integrates with existing pip workflows without significant overhead.
+
+### For Enterprises
+- **Supply Chain Protection**: Mitigate risks from third-party dependencies in production environments.
+- **Compliance**: Assist in meeting security standards and regulatory requirements.
+- **Operational Efficiency**: Automate security checks, reducing manual review efforts and potential human error.
+- **Scalability**: Suitable for large-scale deployments with configurable policies tailored to organizational needs.
+
+pipq enhances overall software supply chain security by providing proactive threat detection and risk assessment.
+
+## Practical Examples
+
+### Example 1: Installing a Popular Package
+```bash
+pipq install requests
+```
+pipq analyzes `requests`, checks for vulnerabilities, and installs if safe. If issues are found, it warns or blocks based on your mode.
+
+### Example 2: Auditing an Existing Environment
+```bash
+pipq audit --json > audit_report.json
+```
+Generates a JSON report of all installed packages' security status for review or integration into CI/CD pipelines.
+
+### Example 3: Checking a Specific Version
+```bash
+pipq check numpy==1.21.0 --deep
+```
+Performs deep analysis on NumPy version 1.21.0, including dependencies, and outputs detailed security information.
+
+### Example 4: Secure Upgrade Process
+```bash
+pipq upgrade --all --dry-run
+```
+Previews upgrades for all packages, showing potential security improvements without making changes.
+
+## FAQ
+
+### What is pipq?
+pipq is a security wrapper for pip that analyzes Python packages for potential threats before installation, helping prevent supply chain attacks and malware.
+
+### How does pipq differ from pip?
+pipq adds security layers on top of pip, including vulnerability scanning, malware detection, and integrity checks, without altering pip's core functionality.
+
+### Is pipq safe to use in production?
+While functional, pipq is experimental. Test thoroughly in staging environments before production use. It offers no compatibility guarantees.
+
+### Can pipq replace pip entirely?
+pipq is designed to work alongside pip. Use `pipq install` instead of `pip install` for security-enhanced installations.
+
+### What if pipq blocks a legitimate package?
+Configure pipq to warn instead of block, or use `--force` for exceptions. Review the analysis output to understand the concern.
+
+### Does pipq slow down installations?
+Analysis adds some overhead, but caching and efficient checks minimize impact. For large environments, consider batch operations.
+
+### How do I report issues or contribute?
+Report bugs or feature requests via GitHub issues. Contributions are welcome; see the repository for guidelines.
+
+### Is pipq compatible with all Python versions?
+pipq requires Python 3.8+. Compatibility with older versions is not guaranteed.
+
+### Can I use pipq with virtual environments?
+Yes, pipq works within virtual environments. Activate your venv and use pipq as usual.
+
+### What data does pipq collect?
+pipq does not collect or transmit user data. All analysis is local, though it may query public APIs like VirusTotal or PyPI.
 
 ## Architecture
 
-pipq is built on a modular validator system. Each security check is an independent validator that inherits from `BaseValidator`. This design makes it easy to extend or customize security policies.
+pipq is built on a modular validator system. Each security check is an independent validator inheriting from `BaseValidator`, allowing easy extension and customization of security policies.
 
----
-
-## Current Implementation Status
+## Implementation Status
 
 ### Fully Implemented
-
-**Static Code Analysis**
-- Full AST parsing 
-- Detection of dangerous functions
-- Detection of suspicious imports
-- Detection of encoded content
-- Safe by design (no code execution)
-
-**Integrity Verification**
-- SHA256 verification against PyPI metadata
-- Detection of non-HTTPS URLs
-- Integrity validation
-
-**Provenance Checks**
-- Source repository validation (GitHub, GitLab, Bitbucket)
-- Detection of `pyproject.toml` and modern packaging standards
-- Project URL validation
-
-**Vulnerability Databases**
-- OSV (Open Source Vulnerabilities) fully integrated
-- Safety DB integration with local caching
-- Caching system with DBM for performance
-
-**Repository Activity Analysis**
-- GitHub API integration (stars, forks, issues)
-- Basic GitLab detection
-- Popularity metrics from pepy.tech API
-
-**License Compatibility**
-- License detection from classifiers
-- Identification of restrictive licenses (GPL, AGPL)
-- OSI-approved license analysis
-
-**Caching System**
-- Vulnerability DB with DBM and file-based fallback
-- Safety DB cache with expiration
-- Graceful fallback if cache fails
-
-**Environment Integration**
-- Support for `requirements.txt`
-- Parsing of `pyproject.toml` (dependencies and dev-dependencies)
-- Basic detection of `setup.py`
-- Pipfile support
-
----
+- **Static Code Analysis**: Full AST parsing, detection of dangerous functions, imports, and encoded content.
+- **Integrity Verification**: SHA256 verification, HTTPS URL detection.
+- **Provenance Checks**: Repository validation, modern packaging standards.
+- **Vulnerability Databases**: OSV and Safety DB integration with caching.
+- **Repository Activity Analysis**: GitHub API, popularity metrics.
+- **License Compatibility**: Detection and analysis of licenses.
+- **Caching System**: DBM and file-based caching.
+- **Environment Integration**: Support for various dependency files.
 
 ### Partially Implemented
-
-**Malware Detection**
-- VirusTotal API integration functional
-- Basic pattern detection (IPs, crypto-related keywords)
-- Signature-based detection not implemented
-- Limited obfuscation detection
-
-**Dependency Chain Analysis**
-- Basic dependency parsing
-- `--deep` option for extended scanning
-- Recursive risk scoring not implemented
-- Only basic transitive vulnerability checks
-
-**Cryptographic Signatures**
-- GPG signature detection in metadata
-- Signature verification not fully functional
-- No support for PEP 458/480
-
----
+- **Malware Detection**: VirusTotal API, basic pattern detection.
+- **Dependency Chain Analysis**: Basic parsing, `--deep` option.
+- **Cryptographic Signatures**: GPG detection, partial verification.
 
 ### Not Implemented
-
-**Enhanced Security Validation**
-```python
-# Placeholder validators
-class NewBinValidator(BaseValidator):
-    def _validate(self) -> None:
-        self.add_info("New Binary Check", "Not yet implemented.")
-
-class SignaturesValidator(BaseValidator): 
-    def _validate(self) -> None:
-        self.add_info("Signature Check", "Not yet implemented.")
-
-class ScriptsValidator(BaseValidator):
-    def _validate(self) -> None:
-        self.add_info("Install Script Check", "Not yet implemented.")
-````
-
-**Python Advisory Database Integration**
-
-* Not implemented (currently only OSV and Safety DB are supported)
-
-**Advanced Repository Analysis**
-
-* Commit frequency analysis not implemented
-* Contributor diversity analysis not implemented
-* Advanced license compatibility rules not implemented
-
-**Detailed Reporting**
-
-* Audit trails not implemented
-* Historical vulnerability tracking not implemented
-* Risk trend analysis not implemented
-
----
-
-## Completion Summary
+- Enhanced security validations (e.g., new binary checks, install scripts).
+- Python Advisory Database integration.
+- Advanced repository analysis (commit frequency, contributor diversity).
+- Detailed reporting (audit trails, historical tracking).
 
 | Category                 | Implemented | Partial | Planned |
 | ------------------------ | ----------- | ------- | ------- |
@@ -300,7 +296,8 @@ class ScriptsValidator(BaseValidator):
 | Cryptographic Signatures | 30%         | 70%     | -       |
 | UX / Configuration       | 85%         | 15%     | -       |
 
-Overall, about 75–80% of core features are already implemented in version 0.3.0. The foundation is strong, with most critical security checks fully operational.
+Overall, 75–80% of core features are implemented in version 0.3.0.
 
 ## Author
+
 Livrädo Sandoval · [livrasand@gmail.com](mailto:livrasand@gmail.com)

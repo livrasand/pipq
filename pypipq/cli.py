@@ -5,6 +5,7 @@ This module provides the main entry point for the pipq command.
 """
 import json
 import os
+import re
 import sys
 import io
 import subprocess
@@ -429,14 +430,19 @@ def _should_continue_on_error(config: Config) -> bool:
 def _run_pip_install(packages: List[str], upgrade: bool = False) -> None:
     """
     Run the actual pip install command.
-    
+
     Args:
         packages: List of package names to install.
         upgrade: Whether to run 'pip install --upgrade'.
     """
+    # Validate package names
+    for pkg in packages:
+        if not re.match(r'^[a-zA-Z0-9\-_.]+(?:\[.*\])?(?:[<>=!~]=.*)?$', pkg):
+            raise ValueError(f"Invalid package specifier: {pkg}")
+
     action = "Upgrading" if upgrade else "Installing"
     console.print(f"[bold green]{action} packages: {', '.join(packages)}[/bold green]")
-    
+
     # Build pip command
     pip_cmd = [sys.executable, "-m", "pip", "install"]
     if upgrade:

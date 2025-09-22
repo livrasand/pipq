@@ -66,6 +66,25 @@ def _get_dist_url(metadata: Dict[str, Any], version: Optional[str] = None) -> st
 
     return dist_files[0].get("url") if dist_files else None
 
+def _safe_extract(archive, extract_dir: Path) -> None:
+    """Safely extract archive preventing path traversal and zip bombs."""
+    MAX_SIZE = 500 * 1024 * 1024  # 500MB limit
+    total_size = 0
+
+    for member in archive.getmembers():
+        # Prevent path traversal
+        if member.name.startswith('/') or '..' in member.name:
+            raise ValueError(f"Unsafe path: {member.name}")
+
+        # Prevent zip bombs
+        size = getattr(member, 'size', getattr(member, 'file_size', 0))
+        total_size += size
+        if total_size > MAX_SIZE:
+            raise ValueError("Archive too large (possible zip bomb)")
+
+        archive.extract(member, path=extract_dir)
+
+
 def _download_and_extract_package(url: str, temp_dir: str) -> Tuple[Optional[str], Optional[str]]:
     logger = logging.getLogger(__name__)
     logger.info(f"Downloading and extracting package from url: {url}")
@@ -83,19 +102,19 @@ def _download_and_extract_package(url: str, temp_dir: str) -> Tuple[Optional[str
 
         if downloaded_file_path.name.endswith((".whl", ".zip")):
             with zipfile.ZipFile(downloaded_file_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
+                _safe_extract(zip_ref, extract_dir)
         elif downloaded_file_path.name.endswith(".tar.gz"):
             with tarfile.open(downloaded_file_path, "r:gz") as tar:
-                tar.extractall(path=extract_dir)
+                _safe_extract(tar, extract_dir)
         elif downloaded_file_path.name.endswith(".tar.bz2"):
              with tarfile.open(downloaded_file_path, "r:bz2") as tar:
-                tar.extractall(path=extract_dir)
+                 _safe_extract(tar, extract_dir)
         else:
             return str(downloaded_file_path), None
 
         return str(downloaded_file_path), str(extract_dir)
 
-    except (requests.exceptions.RequestException, tarfile.TarError, zipfile.BadZipFile) as e:
+    except (requests.exceptions.RequestException, tarfile.TarError, zipfile.BadZipFile, ValueError) as e:
         print(f"Warning: Could not download or extract package from {url}: {e}")
         return None, None
 
