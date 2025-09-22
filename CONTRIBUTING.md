@@ -303,10 +303,6 @@ When reporting bugs or requesting features:
 - **Pull Requests**: Code contributions
 - **Security**: Report security issues privately
 
-## License
-
-By contributing to pypipq, you agree that your contributions will be licensed under the same license as the project (Apache 2.0).
-
 ## Recognition
 
 Contributors are recognized in the project's contributor list. Significant contributions may be acknowledged in release notes.
