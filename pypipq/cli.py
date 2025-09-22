@@ -31,6 +31,8 @@ from .core.config import Config
 from .core.validator import validate_package
 from .utils.environment import detect_dependency_file, get_installed_packages, parse_dependencies
 from .utils.pypi import fetch_package_metadata
+from datetime import datetime, timedelta
+from packaging import version
 
 
 console = Console(emoji=True, force_terminal=True)
@@ -206,8 +208,11 @@ def install(packages: List[str], dev: bool, force: bool, silent: bool, allow_new
                     sys.exit(1)
                 continue
     
+    # Collect versions for display
+    package_versions = [version for package_spec in packages for _, version in [_parse_package_spec(package_spec)]]
+
     # Display results
-    should_install = _display_results_and_get_confirmation(all_results, config_obj)
+    should_install = _display_results_and_get_confirmation(all_results, config_obj, versions=package_versions)
     
     if should_install:
         _run_pip_install(packages)
@@ -257,7 +262,152 @@ def check(packages: List[str], config: Optional[str], json_output: bool, md_outp
     elif html_output:
         console.print(_format_results_as_html(all_results))
     else:
-        _display_results(all_results, show_summary=False)
+        # Collect versions for display
+        package_versions = [version for package_spec in packages for _, version in [_parse_package_spec(package_spec)]]
+        _display_results(all_results, show_summary=False, versions=package_versions)
+
+
+def _generate_enhanced_recommendations(package_name: str, current_version: Optional[str], validator_results: List[dict], config: Config) -> List[str]:
+    """
+    Generate enhanced, humanized recommendations based on package analysis.
+
+    Evaluates newer versions for stability, update frequency, and developer experience improvements.
+    """
+    recommendations = []
+
+    try:
+        # Fetch full metadata to analyze versions
+        metadata = fetch_package_metadata(package_name)
+        releases = metadata.get("releases", {})
+
+        if not releases:
+            return recommendations
+
+        # Get current version info
+        current_ver = version.parse(current_version) if current_version else None
+
+        # Collect version data with release dates
+        version_data = []
+        for ver_str, files in releases.items():
+            if not files:
+                continue
+            try:
+                ver = version.parse(ver_str)
+                upload_time = files[0].get("upload_time_iso_8601")
+                if upload_time:
+                    release_date = datetime.fromisoformat(upload_time.replace("Z", "+00:00"))
+                    version_data.append({
+                        "version": ver,
+                        "version_str": ver_str,
+                        "release_date": release_date,
+                        "is_prerelease": ver.is_prerelease
+                    })
+            except Exception:
+                continue
+
+        if not version_data:
+            return recommendations
+
+        # Sort by version (newest first)
+        version_data.sort(key=lambda x: x["version"], reverse=True)
+
+        # Find newer stable versions
+        newer_versions = [v for v in version_data if not v["is_prerelease"] and current_ver and v["version"] > current_ver]
+
+        if newer_versions:
+            latest_stable = newer_versions[0]
+
+            # Calculate update frequency (releases per month over last year)
+            one_year_ago = datetime.now(latest_stable["release_date"].tzinfo) - timedelta(days=365)
+            recent_releases = [v for v in version_data if v["release_date"] > one_year_ago]
+            months_active = max(1, (datetime.now(latest_stable["release_date"].tzinfo) - min(v["release_date"] for v in recent_releases)).days / 30)
+            update_frequency = len(recent_releases) / months_active
+
+            # Calculate stability (time since last release)
+            days_since_release = (datetime.now(latest_stable["release_date"].tzinfo) - latest_stable["release_date"]).days
+
+            # Generate recommendation based on metrics
+            if days_since_release < 30:
+                stability_text = "recently updated and actively maintained"
+            elif days_since_release < 90:
+                stability_text = "fairly recent with regular updates"
+            elif days_since_release < 180:
+                stability_text = "somewhat stable but not the most recent"
+            else:
+                stability_text = "stable but may be missing newer features"
+
+            if update_frequency > 2:
+                frequency_text = "frequently updated"
+            elif update_frequency > 0.5:
+                frequency_text = "regularly maintained"
+            else:
+                frequency_text = "occasionally updated"
+
+            # Check for security improvements
+            has_vulnerabilities = any("vulnerability" in str(err).lower() for res in validator_results for err in res.get("errors", []))
+            has_age_warnings = any("age" in str(warn).lower() for res in validator_results for warn in res.get("warnings", []))
+
+            if has_vulnerabilities:
+                recommendations.append(
+                    f"🚨 [red]Security update available![/red] Version {latest_stable['version_str']} addresses known vulnerabilities. "
+                    f"This version is {stability_text} ({frequency_text}, ~{update_frequency:.1f} releases/month). "
+                    f"Consider upgrading to improve security."
+                )
+            elif has_age_warnings:
+                recommendations.append(
+                    f"📅 [blue]Fresh alternative ready![/blue] Version {latest_stable['version_str']} is available and {stability_text}. "
+                    f"The package sees {frequency_text} (~{update_frequency:.1f} releases/month), suggesting active development. "
+                    f"This could bring bug fixes and new features to enhance your development experience."
+                )
+            else:
+                recommendations.append(
+                    f"✨ [green]Newer version available![/green] Consider {latest_stable['version_str']} - it's {stability_text} "
+                    f"with {frequency_text} (~{update_frequency:.1f} releases/month). "
+                    f"Upgrading might bring performance improvements and new capabilities."
+                )
+
+        # Check maintainer and popularity trends
+        maintainer_info = None
+        popularity_info = None
+        for res in validator_results:
+            if res["name"] == "Maintainer":
+                maintainer_warnings = res.get("warnings", [])
+                if maintainer_warnings:
+                    maintainer_info = "single maintainer"
+            elif res["name"] == "Popularity":
+                popularity_data = res.get("info", {})
+                downloads_30d = popularity_data.get("downloads_last_30_days", 0)
+                if downloads_30d > 1000:
+                    popularity_info = "popular"
+                elif downloads_30d > 100:
+                    popularity_info = "moderately popular"
+
+        # Add community recommendations
+        if maintainer_info == "single maintainer":
+            recommendations.append(
+                f"👥 [yellow]Community consideration:[/yellow] This package is maintained by a single developer. "
+                f"While that's fine for many projects, consider if you need the stability of a team-maintained package. "
+                f"Check the project's GitHub for recent activity and community engagement."
+            )
+
+        if popularity_info:
+            if popularity_info == "popular":
+                recommendations.append(
+                    f"📈 [green]Strong community support:[/green] This package has high download numbers, "
+                    f"indicating robust community adoption and likely good support resources available."
+                )
+            elif popularity_info == "moderately popular":
+                recommendations.append(
+                    f"📊 [blue]Growing community:[/blue] The package has decent traction with steady downloads, "
+                    f"suggesting it's gaining popularity and should have adequate community support."
+                )
+
+    except Exception as e:
+        # If analysis fails, don't break the display
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Failed to generate enhanced recommendations for {package_name}: {e}")
+
+    return recommendations
 
 
 def _format_results_as_markdown(all_results: List[dict]) -> str:
@@ -324,11 +474,12 @@ def _format_results_as_html(all_results: List[dict]) -> str:
     return f"<pre>{json.dumps(all_results, indent=4)}</pre>"
 
 
-def _display_results(all_results: List[dict], show_summary: bool = True) -> None:
+def _display_results(all_results: List[dict], show_summary: bool = True, versions: Optional[List[Optional[str]]] = None) -> None:
     """Display validation results in a user-friendly, formatted way."""
 
-    for results in all_results:
+    for i, results in enumerate(all_results):
         package_name = results["package"]
+        current_version = versions[i] if versions and i < len(versions) else None
         errors = results.get("errors", [])
         warnings = results.get("warnings", [])
         validator_results = results.get("validator_results", [])
@@ -393,20 +544,25 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
             console.print(issues_panel)
             console.print()
 
-        # Show recommendations
+        # Show enhanced recommendations
         if errors or warnings:
-            recs = []
-            if errors:
-                recs.append("• [red]Do not install this package - security risks detected[/red]")
-            if any("vulnerability" in str(e).lower() for e in errors):
-                recs.append("• [yellow]Check for security updates or alternative packages[/yellow]")
-            if any("age" in str(w).lower() for w in warnings):
-                recs.append("• [blue]Consider packages with more recent releases[/blue]")
-            if any("maintainer" in str(w).lower() for w in warnings):
-                recs.append("• [blue]Look for packages with active maintainer communities[/blue]")
+            # Generate enhanced recommendations
+            enhanced_recs = _generate_enhanced_recommendations(package_name, current_version, validator_results, config)
 
-            if recs:
-                rec_panel = Panel("\n".join(recs), title="💡 Recommendations", border_style="blue")
+            # Fallback to basic recommendations if enhanced ones fail
+            if not enhanced_recs:
+                enhanced_recs = []
+                if errors:
+                    enhanced_recs.append("• [red]Do not install this package - security risks detected[/red]")
+                if any("vulnerability" in str(e).lower() for e in errors):
+                    enhanced_recs.append("• [yellow]Check for security updates or alternative packages[/yellow]")
+                if any("age" in str(w).lower() for w in warnings):
+                    enhanced_recs.append("• [blue]Consider packages with more recent releases[/blue]")
+                if any("maintainer" in str(w).lower() for w in warnings):
+                    enhanced_recs.append("• [blue]Look for packages with active maintainer communities[/blue]")
+
+            if enhanced_recs:
+                rec_panel = Panel("\n".join(enhanced_recs), title="💡 Recommendations", border_style="blue")
                 console.print(rec_panel)
                 console.print()
 
@@ -448,9 +604,9 @@ def _display_results(all_results: List[dict], show_summary: bool = True) -> None
 
 
 
-def _display_results_and_get_confirmation(all_results: List[dict], config: Config) -> bool:
+def _display_results_and_get_confirmation(all_results: List[dict], config: Config, versions: Optional[List[Optional[str]]] = None) -> bool:
     """Display validation results and get user confirmation to install."""
-    _display_results(all_results, show_summary=True)
+    _display_results(all_results, show_summary=True, versions=versions)
 
     total_errors = sum(len(r.get("errors", [])) for r in all_results)
     total_warnings = sum(len(r.get("warnings", [])) for r in all_results)
