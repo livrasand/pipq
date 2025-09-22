@@ -123,14 +123,22 @@ def main(ctx: click.Context, version: bool, verbose: bool, debug: bool) -> None:
         console.print("Use 'pipq --help' for more information.")
 
 
-@main.command(name="install", 
-    short_help="Install packages after security validation.",
-    help="""Install packages after security validation.
+@main.command(name="install",
+    short_help="Securely install packages with safety checks.",
+    help="""Securely install packages with comprehensive security validation.
+
+    Before installation, pipq runs multiple security checks including:
+    • Vulnerability scanning
+    • Malware detection
+    • License validation
+    • Code integrity verification
+    • Maintainer reputation checks
 
     If no packages are specified, pipq will attempt to install dependencies
     from 'pyproject.toml', 'requirements.txt', or 'setup.py' in that order.
 
     Use the --dev flag to include development dependencies from 'pyproject.toml'.
+    Use --force to skip validation (not recommended).
     """
 )
 @click.argument("packages", nargs=-1, required=False)
@@ -152,13 +160,15 @@ def install(packages: List[str], dev: bool, force: bool, silent: bool, allow_new
     if not packages:
         dependency_file = detect_dependency_file()
         if dependency_file:
-            console.print(f"[green]Detected dependency file: {dependency_file}[/green]")
+            console.print(f"[green]📄 Found dependency file: {dependency_file}[/green]")
             packages = parse_dependencies(dependency_file, include_dev=dev)
             if not packages:
-                console.print("[yellow]No dependencies found in the file.[/yellow]")
+                console.print("[yellow]⚠️  No dependencies found in the file.[/yellow]")
+                console.print("[dim]Try specifying packages manually or check your dependency file.[/dim]")
                 return
         else:
-            console.print("[red]No packages specified and no dependency file found.[/red]")
+            console.print("[red]❌ No packages specified and no dependency file found.[/red]")
+            console.print("[dim]Create a requirements.txt, pyproject.toml, or setup.py file, or specify packages directly.[/dim]")
             return
 
     # Override mode if silent flag is used
@@ -171,7 +181,8 @@ def install(packages: List[str], dev: bool, force: bool, silent: bool, allow_new
 
     # If force flag is used, skip validation entirely
     if force:
-        console.print("[yellow]Skipping validation (--force flag used)[/yellow]")
+        console.print("[yellow]⚠️  Skipping security validation (--force flag used)[/yellow]")
+        console.print("[dim]Installing without security checks - use at your own risk![/dim]")
         _run_pip_install(packages)
         return
     
@@ -181,17 +192,17 @@ def install(packages: List[str], dev: bool, force: bool, silent: bool, allow_new
         package_name, version = _parse_package_spec(package_spec)
         display_name = f"{package_name}@{version}" if version else package_name
         
-        console.print(f"\n[bold blue]Analyzing package: {display_name}[/bold blue]")
-        
-        with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
+        console.print(f"\n[bold blue]🔍 Analyzing package: {display_name}[/bold blue]")
+
+        with Halo(text=f"Running security checks on {display_name}...", spinner="dots") as spinner:
             try:
                 results = validate_package(package_name, config_obj, version=version)
                 all_results.append(results)
-                spinner.succeed(f"Analysis complete for {display_name}")
+                spinner.succeed(f"✅ Security analysis complete for {display_name}")
             except Exception as e:
-                spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
+                spinner.fail(f"❌ Analysis failed for {display_name}: {str(e)}")
                 if not _should_continue_on_error(config_obj):
-                    console.print(f"[red]Aborting installation due to ana               lysis failure.[/red]")
+                    console.print(f"[red]🚫 Aborting installation due to analysis failure.[/red]")
                     sys.exit(1)
                 continue
     
@@ -227,16 +238,16 @@ def check(packages: List[str], config: Optional[str], json_output: bool, md_outp
         package_name, version = _parse_package_spec(package_spec)
         display_name = f"{package_name}@{version}" if version else package_name
         
-        console.print(f"[bold blue]Analyzing package: {display_name}[/bold blue]")
-        
-        with Halo(text=f"Validating {display_name}...", spinner="dots") as spinner:
+        console.print(f"[bold blue]🔍 Analyzing package: {display_name}[/bold blue]")
+
+        with Halo(text=f"Running security checks on {display_name}...", spinner="dots") as spinner:
             try:
                 results = validate_package(package_name, config_obj, version=version, deep_scan=deep, depth=depth)
                 all_results.append(results)
-                spinner.succeed(f"Analysis complete for {display_name}")
+                spinner.succeed(f"✅ Security analysis complete for {display_name}")
             except Exception as e:
-                spinner.fail(f"Analysis failed for {display_name}: {str(e)}")
-                console.print(f"[red]Could not analyze package: {str(e)}[/red]")
+                spinner.fail(f"❌ Analysis failed for {display_name}: {str(e)}")
+                console.print(f"[red]🚫 Could not analyze package: {str(e)}[/red]")
                 continue
     
     if json_output:
@@ -314,95 +325,126 @@ def _format_results_as_html(all_results: List[dict]) -> str:
 
 
 def _display_results(all_results: List[dict], show_summary: bool = True) -> None:
-    """Display validation results in a formatted table."""
-    
+    """Display validation results in a user-friendly, formatted way."""
+
     for results in all_results:
         package_name = results["package"]
         errors = results.get("errors", [])
         warnings = results.get("warnings", [])
         validator_results = results.get("validator_results", [])
-        
+
         if not validator_results:
-            console.print(f"[yellow]{package_name}: No validators were run.[/yellow]")
+            console.print(f"[yellow]⚠️  {package_name}: No security checks were performed.[/yellow]")
             continue
 
-        console.print(f"\n[bold blue]Results for: {package_name}[/bold blue]")
+        # Package header with status overview
+        total_checks = len(validator_results)
+        failed_checks = sum(1 for v in validator_results if v.get("errors"))
+        warning_checks = sum(1 for v in validator_results if v.get("warnings") and not v.get("errors"))
+        passed_checks = total_checks - failed_checks - warning_checks
 
-        # Display summary of validators
-        summary_table = Table(title=f"Validators Summary for {package_name}")
-        summary_table.add_column("Validator", style="bold")
-        summary_table.add_column("Category", style="bold")
-        summary_table.add_column("Status", style="bold")
+        status_icon = "✅" if failed_checks == 0 and warning_checks == 0 else "❌" if failed_checks > 0 else "⚠️"
+        status_color = "green" if failed_checks == 0 and warning_checks == 0 else "red" if failed_checks > 0 else "yellow"
 
-        has_issues = False
+        console.print(f"\n[bold {status_color}]{status_icon} Security Analysis: {package_name}[/bold {status_color}]")
+        console.print(f"[dim]Passed: {passed_checks} | Warnings: {warning_checks} | Failed: {failed_checks} checks[/dim]")
+
+        # Quick summary table
+        summary_table = Table(show_header=True, box=None, pad_edge=False)
+        summary_table.add_column("Check", style="bold", width=25)
+        summary_table.add_column("Status", width=12)
+        summary_table.add_column("Details", width=40)
+
         for val_result in validator_results:
-            val_name = val_result["name"]
+            val_name = val_result["name"].replace("Validator", "").strip()
             val_category = val_result["category"]
-            status = "[green]Passed[/green]"
+
             if val_result["errors"]:
-                status = "[red]Failed[/red]"
-                has_issues = True
+                status = "[red]❌ Failed[/red]"
+                details = f"[red]{len(val_result['errors'])} issue(s)[/red]"
             elif val_result["warnings"]:
-                status = "[yellow]Warning[/yellow]"
-                has_issues = True
-            summary_table.add_row(val_name, val_category, status)
-        
+                status = "[yellow]⚠️  Warning[/yellow]"
+                details = f"[yellow]{len(val_result['warnings'])} concern(s)[/yellow]"
+            else:
+                status = "[green]✅ Passed[/green]"
+                details = "[green]No issues[/green]"
+
+            summary_table.add_row(f"{val_name}", status, details)
+
         console.print(summary_table)
         console.print()
 
-        if not has_issues:
-            console.print(f"[green]{package_name}: No issues found[/green]")
-            #continue
-
-        # Display aggregated errors and warnings
+        # Show issues if any exist
         if errors or warnings:
-            table = Table(title=f"Aggregated Issues for {package_name}")
-            table.add_column("Type", style="bold")
-            table.add_column("Message")
+            issues_panel = Panel("", title="🔍 Issues Found", border_style="red" if errors else "yellow")
 
-            for error in errors:
-                table.add_row("ERROR", f"[red]{error}[/red]")
-            for warning in warnings:
-                table.add_row("WARNING", f"[yellow]{warning}[/yellow]")
-            console.print(table)
+            if errors:
+                issues_panel.renderable += "[bold red]Critical Issues:[/bold red]\n"
+                for error in errors:
+                    issues_panel.renderable += f"• {error}\n"
+
+            if warnings:
+                if errors:
+                    issues_panel.renderable += "\n"
+                issues_panel.renderable += "[bold yellow]Warnings:[/bold yellow]\n"
+                for warning in warnings:
+                    issues_panel.renderable += f"• {warning}\n"
+
+            console.print(issues_panel)
             console.print()
 
-        # Display detailed validator results
-        for val_result in validator_results:
-            val_name = val_result["name"]
-            val_category = val_result["category"]
-            val_description = val_result["description"]
-            val_errors = val_result["errors"]
-            val_warnings = val_result["warnings"]
-            val_info = val_result["info"]
+        # Show recommendations
+        if errors or warnings:
+            recs = []
+            if errors:
+                recs.append("• [red]Do not install this package - security risks detected[/red]")
+            if any("vulnerability" in str(e).lower() for e in errors):
+                recs.append("• [yellow]Check for security updates or alternative packages[/yellow]")
+            if any("age" in str(w).lower() for w in warnings):
+                recs.append("• [blue]Consider packages with more recent releases[/blue]")
+            if any("maintainer" in str(w).lower() for w in warnings):
+                recs.append("• [blue]Look for packages with active maintainer communities[/blue]")
 
-            if val_errors or val_warnings or val_info:
-                table = Table(title=f"Validator: {val_name} ({val_category})")
-                table.add_column("Type", style="bold")
-                table.add_column("Message")
-
-                if val_description:
-                    table.add_row("INFO", f"[cyan]{val_description}[/cyan]")
-
-                for err in val_errors:
-                    table.add_row("ERROR", f"[red]{err}[/red]")
-                for warn in val_warnings:
-                    table.add_row("WARNING", f"[yellow]{warn}[/yellow]")
-                for key, value in val_info.items():
-                    table.add_row("INFO", f"[magenta]{key}: {value}[/magenta]")
-                console.print(table)
+            if recs:
+                rec_panel = Panel("\n".join(recs), title="💡 Recommendations", border_style="blue")
+                console.print(rec_panel)
                 console.print()
-    
-    if show_summary:
+
+        # Add brief category explanations if there were issues
+        if errors or warnings:
+            categories_explained = set()
+            for val_result in validator_results:
+                if val_result.get("errors") or val_result.get("warnings"):
+                    cat = val_result["category"]
+                    if cat not in categories_explained:
+                        categories_explained.add(cat)
+                        # Add brief explanations for categories
+                        if cat == "Security":
+                            console.print("[dim]🔒 Security: Checks for vulnerabilities, malware, and cryptographic issues[/dim]")
+                        elif cat == "Quality":
+                            console.print("[dim]✨ Quality: Evaluates package maturity, maintenance, and release patterns[/dim]")
+                        elif cat == "Risk":
+                            console.print("[dim]⚠️  Risk: Assesses potential security risks from dependencies and package characteristics[/dim]")
+                        elif cat == "Community":
+                            console.print("[dim]👥 Community: Reviews maintainer support and package popularity[/dim]")
+            if categories_explained:
+                console.print()
+
+    if show_summary and all_results:
         total_errors = sum(len(r.get("errors", [])) for r in all_results)
         total_warnings = sum(len(r.get("warnings", [])) for r in all_results)
-        
+        total_packages = len(all_results)
+
         if total_errors > 0 or total_warnings > 0:
-            summary_text = f"Summary: {total_errors} error(s), {total_warnings} warning(s)"
-            if total_errors > 0:
-                console.print(Panel(summary_text, style="red", title="Security Summary"))
-            else:
-                console.print(Panel(summary_text, style="yellow", title="Security Summary"))
+            summary_title = "🚨 Security Alert" if total_errors > 0 else "⚠️  Security Notice"
+            summary_style = "red" if total_errors > 0 else "yellow"
+
+            summary_text = f"Analyzed {total_packages} package(s)\n"
+            summary_text += f"Found {total_errors} critical issue(s), {total_warnings} warning(s)"
+
+            console.print(Panel(summary_text, style=summary_style, title=summary_title))
+        else:
+            console.print(Panel(f"✅ All {total_packages} package(s) passed security checks!", style="green", title="Security Clear"))
 
 
 
@@ -415,23 +457,35 @@ def _display_results_and_get_confirmation(all_results: List[dict], config: Confi
     mode = config.get("mode", "interactive")
 
     if total_errors > 0:
-        console.print("[red]Installation aborted due to critical errors.[/red]")
+        console.print("[red]🚫 Installation blocked: Critical security issues detected![/red]")
+        console.print("[dim]These issues pose significant risks and should be resolved before installation.[/dim]")
         return False
 
     if mode == "silent":
+        console.print("[dim]🔇 Silent mode: Proceeding with installation...[/dim]")
         return True
 
     if mode == "block":
         if total_warnings > 0:
-            console.print("[red]Installation aborted due to warnings (block mode).[/red]")
+            console.print("[red]🚫 Installation blocked: Warnings detected in block mode.[/red]")
+            console.print("[dim]Use --allow-warnings or change mode to proceed.[/dim]")
             return False
+        console.print("[dim]✅ Block mode: No issues found, proceeding...[/dim]")
         return True
 
     # Interactive mode
     if total_warnings > 0:
-        console.print(f"[yellow]Found {total_warnings} warning(s).[/yellow]")
+        console.print(f"[yellow]⚠️  Found {total_warnings} warning(s) that may affect security.[/yellow]")
+        console.print("[dim]Warnings don't block installation but should be reviewed.[/dim]")
+        console.print()
 
-    return click.confirm("Do you want to proceed with the installation?")
+    # Enhanced confirmation prompt
+    if total_warnings > 0:
+        proceed = click.confirm("⚠️  Proceed with installation despite warnings?")
+    else:
+        proceed = click.confirm("✅ Install package(s)?")
+
+    return proceed
 
 
 def _should_continue_on_error(config: Config) -> bool:
@@ -452,7 +506,7 @@ def _run_pip_install(packages: List[str], upgrade: bool = False) -> None:
         if not re.match(r'^[a-zA-Z0-9\-_.]+(?:\[.*\])?(?:[<>=!~]=.*)?$', pkg):
             raise ValueError(f"Invalid package specifier: {pkg}")
 
-    action = "Upgrading" if upgrade else "Installing"
+    action = "⬆️  Upgrading" if upgrade else "📦 Installing"
     console.print(f"[bold green]{action} packages: {', '.join(packages)}[/bold green]")
 
     # Build pip command
@@ -460,16 +514,18 @@ def _run_pip_install(packages: List[str], upgrade: bool = False) -> None:
     if upgrade:
         pip_cmd.append("--upgrade")
     pip_cmd.extend(list(packages))
-    
+
     try:
         # Run pip install and stream output
-        subprocess.run(pip_cmd, check=True, capture_output=False)
-        console.print(f"[green]{action} completed successfully![/green]")
+        with Halo(text=f"{action} in progress...", spinner="dots") as spinner:
+            subprocess.run(pip_cmd, check=True, capture_output=False)
+            spinner.succeed(f"✅ {action} completed successfully!")
     except subprocess.CalledProcessError as e:
-        console.print(f"[red]pip install failed with exit code {e.returncode}[/red]")
+        console.print(f"[red]❌ pip install failed with exit code {e.returncode}[/red]")
+        console.print("[dim]Check the error messages above for details.[/dim]")
         sys.exit(e.returncode)
     except KeyboardInterrupt:
-        console.print(f"\\n[yellow]{action} interrupted by user[/yellow]")
+        console.print(f"\n[yellow]⏹️  {action} interrupted by user[/yellow]")
         sys.exit(1)
 
 
@@ -539,16 +595,16 @@ def _get_package_status(result: Dict[str, Any]) -> Tuple[str, str]:
     if errors:
         # Check for specific vulnerability errors
         if any("vulnerability" in err.lower() for err in errors):
-            return "🔒 VULN", ", ".join(errors)
-        return "🔥 ERROR", ", ".join(errors)
+            return "🔴 VULNERABLE", f"{len(errors)} security issue(s)"
+        return "❌ FAILED", f"{len(errors)} error(s)"
 
     if warnings:
         # Check for age warnings
         if any("age" in warn.lower() for warn in warnings):
-            return "⚠️ OLD", ", ".join(warnings)
-        return "🤔 WARN", ", ".join(warnings)
+            return "🟡 OUTDATED", f"{len(warnings)} warning(s)"
+        return "🟠 WARNINGS", f"{len(warnings)} concern(s)"
 
-    return "✅ OK", "None"
+    return "🟢 SECURE", "No issues"
 
 
 @main.command(name="list")
@@ -567,17 +623,17 @@ def list_packages(vulnerable: bool, config: Optional[str]) -> None:
         console.print("[yellow]No installed packages found.[/yellow]")
         return
 
-    table = Table(title="Installed Packages Security Status")
-    table.add_column("Package", style="cyan")
-    table.add_column("Version", style="magenta")
-    table.add_column("Status", style="bold")
-    table.add_column("Issues")
+    table = Table(title="🔍 Installed Packages Security Status")
+    table.add_column("Package", style="cyan", min_width=20)
+    table.add_column("Version", style="magenta", min_width=10)
+    table.add_column("Security Status", style="bold", min_width=15)
+    table.add_column("Details", min_width=25)
 
-    with Halo(text="Analyzing packages...", spinner="dots") as spinner:
+    with Halo(text="🔎 Scanning installed packages for security issues...", spinner="dots") as spinner:
         for i, pkg in enumerate(installed_packages):
             package_name = pkg["name"]
             version = pkg["version"]
-            spinner.text = f"Analyzing {package_name}=={version} ({i+1}/{len(installed_packages)})"
+            spinner.text = f"🔍 Checking {package_name}=={version} ({i+1}/{len(installed_packages)})"
 
             try:
                 # For 'list', we can run a slightly lighter validation if needed
