@@ -13,6 +13,7 @@ class DependencyValidator(BaseValidator):
         self.name = "Dependency Validator"
         self.description = "Analyzes package dependencies for potential security issues."
         self.category = "Risk"
+        self.timeout = self.config.get("timeout", 30)
 
     def _validate(self) -> None:
         requires_dist = self.get_metadata_field('requires_dist')
@@ -48,7 +49,7 @@ class DependencyValidator(BaseValidator):
             visited.add(pkg)
 
             try:
-                metadata = fetch_package_metadata(pkg)
+                metadata = fetch_package_metadata(pkg, timeout=self.timeout)
                 requires_dist = metadata.get("info", {}).get("requires_dist", [])
                 deps = []
                 if requires_dist:
@@ -58,7 +59,8 @@ class DependencyValidator(BaseValidator):
                 for dep in deps:
                     _build(dep, depth + 1)
                 return deps
-            except Exception:
+            except Exception as e:
+                self.add_warning(f"Could not fetch dependency metadata for {pkg}: {e}")
                 return []
 
         _build(self.pkg_name, 0)

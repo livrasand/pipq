@@ -96,12 +96,12 @@ def _safe_extract(archive, extract_dir: Path) -> None:
         archive.extract(member, path=extract_dir)
 
 
-def _download_and_extract_package(url: str, temp_dir: str) -> Tuple[Optional[str], Optional[str]]:
+def _download_and_extract_package(url: str, temp_dir: str, timeout: int = 30) -> Tuple[Optional[str], Optional[str]]:
     logger = logging.getLogger(__name__)
     logger.info(f"Downloading and extracting package from url: {url}")
     """Downloads a package and extracts it to a subdirectory."""
     try:
-        response = requests.get(url, stream=True)
+        response = requests.get(url, stream=True, timeout=timeout)
         response.raise_for_status()
 
         downloaded_file_path = Path(temp_dir) / Path(url).name
@@ -126,7 +126,7 @@ def _download_and_extract_package(url: str, temp_dir: str) -> Tuple[Optional[str
         return str(downloaded_file_path), str(extract_dir)
 
     except (requests.exceptions.RequestException, tarfile.TarError, zipfile.BadZipFile, ValueError) as e:
-        print(f"Warning: Could not download or extract package from {url}: {e}")
+        logger.warning(f"Could not download or extract package from {url}: {e}")
         return None, None
 
 
@@ -187,7 +187,7 @@ def validate_package(pkg_name: str, config: Config, version: Optional[str] = Non
         downloaded_file_path, extracted_path = None, None
         dist_url = _get_dist_url(metadata, version=version)
         if dist_url:
-            downloaded_file_path, extracted_path = _download_and_extract_package(dist_url, temp_dir)
+            downloaded_file_path, extracted_path = _download_and_extract_package(dist_url, temp_dir, timeout)
 
         # 3. Discover and instantiate validators
         all_validators = discover_validators()

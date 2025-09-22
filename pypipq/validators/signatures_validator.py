@@ -44,7 +44,8 @@ class SignaturesValidator(BaseValidator):
                     if file_info.get("has_sig") or "tuf" in file_info.get("upload_time", "").lower():
                         return True
             return False
-        except Exception:
+        except Exception as e:
+            self.add_warning(f"Could not check TUF signatures: {e}")
             return False
 
     def _check_sigstore(self) -> bool:
@@ -63,5 +64,6 @@ class SignaturesValidator(BaseValidator):
                         "cosign" in str(file_info).lower()):
                         return True
             return False
-        except Exception:
+        except Exception as e:
+            self.add_warning(f"Could not check Sigstore signatures: {e}")
             return False

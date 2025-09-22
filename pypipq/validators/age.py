@@ -168,6 +168,6 @@ class AgeValidator(BaseValidator):
                     )
                     break
                     
-        except Exception:
-            # Ignore errors in version analysis
-            pass
+        except Exception as e:
+            # Log errors in version analysis but don't fail validation
+            self.add_info("version_analysis_error", str(e))

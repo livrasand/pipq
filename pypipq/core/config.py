@@ -37,6 +37,7 @@ class Config:
         "disable_validators": [],
         "enable_validators": [],  # If specified, only these validators run
         "timeout": 30,  # Timeout for network requests
+        "db_timeout": 10,  # Timeout for database operations
         "pypi_url": "https://pypi.org/pypi/",
         "colors": True,
         "verbose": False,
@@ -106,6 +107,7 @@ class Config:
             "PIPQ_DISABLE_VALIDATORS": "disable_validators",
             "PIPQ_ENABLE_VALIDATORS": "enable_validators",
             "PIPQ_TIMEOUT": "timeout",
+            "PIPQ_DB_TIMEOUT": "db_timeout",
             "PIPQ_PYPI_URL": "pypi_url",
             "PIPQ_COLORS": "colors",
             "PIPQ_VERBOSE": "verbose",
@@ -131,7 +133,7 @@ class Config:
 
                 if leaf_key in ["auto_continue_warnings", "colors", "verbose", "enabled"]:
                     target_config[leaf_key] = value.lower() in ("true", "1", "yes", "on")
-                elif leaf_key in ["timeout", "update_interval_days", "minimum_release_age"]:
+                elif leaf_key in ["timeout", "db_timeout", "update_interval_days", "minimum_release_age"]:
                     try:
                         target_config[leaf_key] = int(value)
                     except ValueError:

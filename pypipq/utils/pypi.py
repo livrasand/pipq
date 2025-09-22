@@ -15,7 +15,7 @@ from urllib.parse import urljoin
 
 
 
-def fetch_package_metadata(pkg_name: str, pypi_url: str = "https://pypi.org/pypi/", retries: int = 3) -> Dict[str, Any]:
+def fetch_package_metadata(pkg_name: str, pypi_url: str = "https://pypi.org/pypi/", retries: int = 3, timeout: int = 30) -> Dict[str, Any]:
     logger = logging.getLogger(__name__)
     logger.info(f"Fetching metadata for package: {pkg_name} from {pypi_url}")
     """
@@ -37,7 +37,7 @@ def fetch_package_metadata(pkg_name: str, pypi_url: str = "https://pypi.org/pypi
 
     for attempt in range(retries):
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=timeout)
             if response.status_code == 429:  # Rate limited
                 time.sleep(2 ** attempt)
                 continue

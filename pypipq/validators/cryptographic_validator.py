@@ -94,5 +94,6 @@ class CryptographicValidator(BaseValidator):
         try:
             response = requests.head(url, timeout=10)
             return response.status_code == 200
-        except requests.RequestException:
+        except requests.RequestException as e:
+            self.add_warning(f"Could not check URL existence for {url}: {e}")
             return False
