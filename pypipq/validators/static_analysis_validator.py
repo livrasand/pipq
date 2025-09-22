@@ -81,6 +81,7 @@ class StaticAnalysisValidator(BaseValidator):
     def _validate(self) -> None:
         self._run_static_analysis()
         self._run_virustotal_scan()
+        self._run_semgrep_scan()
 
     def _run_static_analysis(self) -> None:
         if not self.extracted_path:
@@ -166,6 +167,96 @@ class StaticAnalysisValidator(BaseValidator):
                 self.add_error(f"Malware Found (VirusTotal): {report.get('positives')} detections on {report.get('scan_date')}.")
             else:
                 self.add_info("VirusTotal Scan", "No malware detected.")
+
+    def _run_semgrep_scan(self) -> None:
+        """Run Semgrep vulnerability scanning on the package."""
+        if not self.extracted_path:
+            self.add_info("Semgrep Scan", "Skipped (package not extracted).")
+            return
+
+        # Check if semgrep is available
+        if not self._is_semgrep_available():
+            self.add_info("Semgrep Scan", "Semgrep not available. Install semgrep for vulnerability scanning.")
+            return
+
+        try:
+            # Run semgrep scan
+            findings = self._run_semgrep_command()
+
+            if findings:
+                for finding in findings:
+                    severity = finding.get("severity", "unknown")
+                    rule = finding.get("check_id", "unknown")
+                    file_path = finding.get("path", "unknown")
+                    line = finding.get("line", "unknown")
+                    message = finding.get("message", "Vulnerability detected")
+
+                    warning_msg = f"Semgrep {severity}: {rule} in {file_path}:{line} - {message}"
+                    if severity in ["error", "high"]:
+                        self.add_error(warning_msg)
+                    else:
+                        self.add_warning(warning_msg)
+            else:
+                self.add_info("Semgrep Scan", "No vulnerabilities detected.")
+
+        except Exception as e:
+            self.add_warning(f"Error during Semgrep scan: {e}")
+
+    def _is_semgrep_available(self) -> bool:
+        """Check if semgrep command is available."""
+        try:
+            result = subprocess.run(
+                ["semgrep", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+            return False
+
+    def _run_semgrep_command(self) -> List[Dict[str, Any]]:
+        """Run semgrep command and parse results."""
+        try:
+            # Run semgrep with JSON output
+            cmd = [
+                "semgrep",
+                "--json",
+                "--config", "auto",  # Use default rules
+                "--quiet",
+                self.extracted_path
+            ]
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                cwd=self.extracted_path
+            )
+
+            if result.returncode in [0, 1]:  # 0 = no findings, 1 = findings found
+                import json
+                try:
+                    output = json.loads(result.stdout)
+                    return output.get("results", [])
+                except json.JSONDecodeError:
+                    # Try to parse stderr if stdout failed
+                    try:
+                        output = json.loads(result.stderr)
+                        return output.get("results", [])
+                    except json.JSONDecodeError:
+                        return []
+            else:
+                # Semgrep failed
+                return []
+
+        except subprocess.TimeoutExpired:
+            self.add_warning("Semgrep scan timed out")
+            return []
+        except Exception as e:
+            self.add_warning(f"Failed to run semgrep: {e}")
+            return []
 
 
 class SafeStaticAnalyzer:
