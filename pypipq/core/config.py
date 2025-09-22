@@ -42,6 +42,11 @@ class Config:
             "update_interval_days": 7,
             "sources": ["osv", "safetydb", "pypa"],
         },
+        "security": {
+            "minimum_release_age": 0,  # Deshabilitado por defecto
+            "minimum_release_age_exclude": [],
+            "package_policies": {}
+        }
     }
     
     def __init__(self, config_path: Optional[Path] = None) -> None:
@@ -69,7 +74,7 @@ class Config:
         if user_config.exists():
             self._load_file_config(user_config)
         
-        project_config = Path.cwd() / "pypipq.toml"
+        project_config = Path.cwd() / "pipq-workspace.toml"
         if project_config.exists():
             self._load_file_config(project_config)
     
@@ -105,6 +110,8 @@ class Config:
             "PIPQ_VULNERABILITY_CACHE_DIR": "vulnerability.cache_dir",
             "PIPQ_VULNERABILITY_UPDATE_INTERVAL_DAYS": "vulnerability.update_interval_days",
             "PIPQ_VULNERABILITY_SOURCES": "vulnerability.sources",
+            "PIPQ_MINIMUM_RELEASE_AGE": "security.minimum_release_age",
+            "PIPQ_MINIMUM_RELEASE_AGE_EXCLUDE": "security.minimum_release_age_exclude",
         }
         
         for env_var, config_key in env_mapping.items():
@@ -121,12 +128,12 @@ class Config:
 
                 if leaf_key in ["auto_continue_warnings", "colors", "verbose", "enabled"]:
                     target_config[leaf_key] = value.lower() in ("true", "1", "yes", "on")
-                elif leaf_key in ["timeout", "update_interval_days"]:
+                elif leaf_key in ["timeout", "update_interval_days", "minimum_release_age"]:
                     try:
                         target_config[leaf_key] = int(value)
                     except ValueError:
                         pass
-                elif leaf_key in ["disable_validators", "enable_validators", "sources"]:
+                elif leaf_key in ["disable_validators", "enable_validators", "sources", "minimum_release_age_exclude"]:
                     target_config[leaf_key] = [v.strip() for v in value.split(",") if v.strip()]
                 else:
                     target_config[leaf_key] = value

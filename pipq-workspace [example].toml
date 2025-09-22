@@ -1,0 +1,32 @@
+# pipq workspace configuration file
+# This file configures pipq behavior for this workspace/project
+
+[security]
+# Minimum release age in minutes (0 = disabled)
+# Packages must be at least this old to be installable
+minimum_release_age = 1440  # 24 hours
+
+# Packages to exclude from minimum age requirements
+minimum_release_age_exclude = [
+    "requests",
+    "@myorg/*",
+    "emergency-*"
+]
+
+# Package-specific policies
+[security.package_policies]
+# Django packages require only 12 hours minimum age
+"django-*" = { minimum_release_age = 720 }
+# Internal packages have no age restriction
+"@internal/*" = { minimum_release_age = 0 }
+
+# Other configuration options
+[mode]
+# interactive, silent, block
+mode = "interactive"
+
+[colors]
+colors = true
+
+[verbose]
+verbose = false

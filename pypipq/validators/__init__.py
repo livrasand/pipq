@@ -14,6 +14,7 @@ from .malware_detector import MalwareDetector
 from .new_bin_validator import NewBinValidator
 from .popularity_validator import PopularityValidator
 from .provenance_validator import ProvenanceValidator
+from .release_age_validator import ReleaseAgeValidator
 from .static_analysis_validator import StaticAnalysisValidator
 from .scripts_validator import ScriptsValidator
 from .signatures_validator import SignaturesValidator

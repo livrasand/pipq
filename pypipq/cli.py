@@ -134,8 +134,9 @@ def main(ctx: click.Context, version: bool, verbose: bool, debug: bool) -> None:
 @click.option("--dev", is_flag=True, help="Include development dependencies.")
 @click.option("--force", "-f", is_flag=True, help="Skip validation and install directly")
 @click.option("--silent", "-s", is_flag=True, help="Run in silent mode (no prompts)")
+@click.option("--allow-new", is_flag=True, help="Allow installation of packages that don't meet minimum age requirements")
 @click.option("--config", type=click.Path(exists=True), help="Path to config file")
-def install(packages: List[str], dev: bool, force: bool, silent: bool, config: Optional[str]) -> None:
+def install(packages: List[str], dev: bool, force: bool, silent: bool, allow_new: bool, config: Optional[str]) -> None:
     logger = logging.getLogger(__name__)
     logger.info(f"Starting install command for packages: {packages}")
     # Load configuration
@@ -160,7 +161,11 @@ def install(packages: List[str], dev: bool, force: bool, silent: bool, config: O
     # Override mode if silent flag is used
     if silent:
         config_obj.set("mode", "silent")
-    
+
+    # Override age policy if --allow-new is used
+    if allow_new:
+        config_obj.set("security.minimum_release_age", 0)
+
     # If force flag is used, skip validation entirely
     if force:
         console.print("[yellow]Skipping validation (--force flag used)[/yellow]")
