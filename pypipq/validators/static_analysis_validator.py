@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Livrädo Sandoval
+# Licensed under GPL-3.0
+
 """
 Validator that performs static analysis on package source code and scans for malware.
 """

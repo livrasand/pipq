@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Livrädo Sandoval
+# Licensed under GPL-3.0
+
 """
 Release age validator for supply chain security.
 """

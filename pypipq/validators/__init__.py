@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Livrädo Sandoval
+# Licensed under GPL-3.0
+
 """
 Validators for pypipq.
 Each validator should inherit from BaseValidator.

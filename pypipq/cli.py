@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Livrädo Sandoval
+# Licensed under GPL-3.0
+
 """
 Command-line interface for pipq.
 

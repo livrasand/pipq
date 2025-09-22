@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Livrädo Sandoval
+# Licensed under GPL-3.0
+
 from ..core.base_validator import BaseValidator
 from ..core.config import Config
 from ..utils.pypi import fetch_package_metadata

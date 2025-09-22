@@ -1,6 +1,6 @@
 # pipq
 
-![PyPI](https://img.shields.io/pypi/v/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq)](https://pepy.tech/projects/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq/week)](https://pepy.tech/projects/pypipq)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/livrasand/pipq) ![PyPI](https://img.shields.io/pypi/v/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq)](https://pepy.tech/projects/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq/week)](https://pepy.tech/projects/pypipq)
 
 A secure pip proxy that analyzes Python packages before installation to detect potential security issues and risks.
 
@@ -265,38 +265,265 @@ pipq is built on a modular validator system. Each security check is an independe
 ## Implementation Status
 
 ### Fully Implemented
+- **CLI Interface**: Complete command-line interface with install, check, audit, list, config, upgrade, info, and search commands.
+- **Core Validation Pipeline**: Modular validator system with base validator class and discovery mechanism.
 - **Static Code Analysis**: Full AST parsing, detection of dangerous functions, imports, and encoded content.
 - **Integrity Verification**: SHA256 verification, HTTPS URL detection.
 - **Provenance Checks**: Repository validation, modern packaging standards.
-- **Vulnerability Databases**: OSV and Safety DB integration with caching.
+- **Vulnerability Databases**: OSV, Safety DB, and Snyk integration with caching.
 - **Repository Activity Analysis**: GitHub API, popularity metrics.
 - **License Compatibility**: Detection and analysis of licenses.
 - **Caching System**: DBM and file-based caching.
-- **Environment Integration**: Support for various dependency files.
+- **Environment Integration**: Support for various dependency files (requirements.txt, pyproject.toml, setup.py).
+- **Configuration Management**: TOML and environment variable support.
 
 ### Partially Implemented
-- **Malware Detection**: VirusTotal API, basic pattern detection.
-- **Dependency Chain Analysis**: Basic parsing, `--deep` option.
-- **Cryptographic Signatures**: GPG detection, partial verification.
+- **Malware Detection**: Basic pattern detection, VirusTotal API integration (requires API key).
+- **Dependency Chain Analysis**: Basic parsing with circular dependency detection, `--deep` option.
+- **Cryptographic Signatures**: GPG detection and verification, Sigstore support (experimental).
+- **Static Analysis Enhancements**: Semgrep integration (requires external tool).
 
 ### Not Implemented
-- Enhanced security validations (e.g., new binary checks, install scripts).
-- Python Advisory Database integration.
-- Advanced repository analysis (commit frequency, contributor diversity).
-- Detailed reporting (audit trails, historical tracking).
+- **Test Suite**: No unit tests implemented (0% test coverage).
+- **Advanced Reporting**: Audit trails, historical tracking, detailed HTML reports.
+- **Python Advisory Database**: Integration with official Python security advisories.
+- **Advanced Repository Analysis**: Commit frequency, contributor diversity metrics.
+- **Binary Analysis**: Deep inspection of compiled extensions and executables.
 
-| Category                 | Implemented | Partial | Planned |
-| ------------------------ | ----------- | ------- | ------- |
-| Static Analysis          | 95%         | -       | 5%      |
-| Integrity Verification   | 100%        | -       | -       |
-| Provenance Checks        | 90%         | -       | 10%     |
-| Vulnerability Databases  | 80%         | -       | 20%     |
-| Malware Detection        | 60%         | 40%     | -       |
-| Repository Analysis      | 70%         | 30%     | -       |
-| Cryptographic Signatures | 30%         | 70%     | -       |
-| UX / Configuration       | 85%         | 15%     | -       |
+### Known Issues
+- **Database Locking**: VulnerabilityDB uses DBM which can have locking issues on some systems.
+- **Error Handling**: Some validators may fail silently or with incomplete error messages.
+- **Performance**: Large package analysis can be slow due to multiple network requests.
+- **API Dependencies**: Full functionality requires external API keys (VirusTotal, Snyk, etc.).
 
-Overall, 75–80% of core features are implemented in version 0.3.0.
+| Category                 | Implemented | Partial | Planned | Test Coverage |
+| ------------------------ | ----------- | ------- | ------- | ------------- |
+| CLI & UX                 | 100%        | -       | -       | 0%            |
+| Core Framework           | 95%         | -       | 5%      | 0%            |
+| Static Analysis          | 90%         | 10%     | -       | 0%            |
+| Integrity Verification   | 100%        | -       | -       | 0%            |
+| Provenance Checks        | 85%         | 10%     | 5%      | 0%            |
+| Vulnerability Databases  | 75%         | 15%     | 10%     | 0%            |
+| Malware Detection        | 50%         | 40%     | 10%     | 0%            |
+| Repository Analysis      | 65%         | 25%     | 10%     | 0%            |
+| Cryptographic Signatures | 25%         | 60%     | 15%     | 0%            |
+| Configuration            | 90%         | 10%     | -       | 0%            |
+
+Overall, approximately 75% of core features are implemented in version 0.3.0, but test coverage is 0% with no test suite implemented.
+
+## Progress
+
+### Current Development Status
+- **Version**: 0.3.0 (Alpha)
+- **Lines of Code**: ~8,000+ across 25+ modules
+- **Validators Implemented**: 20 security validators
+- **CLI Commands**: 8 fully functional commands
+- **Test Coverage**: 0% (no tests implemented)
+- **Documentation**: Comprehensive README and API docs
+
+### Recent Improvements
+- Modular validator architecture with automatic discovery
+- Multiple vulnerability database integrations (OSV, Safety DB, Snyk)
+- Advanced static analysis with AST parsing and pattern detection
+- Comprehensive CLI with rich terminal interface
+- Flexible configuration system with TOML and environment variables
+- Caching system for performance optimization
+
+### Active Development Areas
+- Test suite implementation (highest priority)
+- Enhanced malware detection capabilities
+- Advanced reporting and audit trail features
+- Performance optimizations for large package analysis
+- Additional vulnerability database integrations
+
+## Dependencies
+
+### Core Dependencies
+- **click>=8.0.0**: Command-line interface framework
+- **rich>=13.0.0**: Rich terminal interface and formatting
+- **halo>=0.0.31**: Spinner animations for CLI
+- **requests>=2.25.0**: HTTP client for API interactions
+- **packaging>=21.0**: Python package version handling
+- **tomli>=1.2.0**: TOML configuration parsing (Python <3.11)
+- **tomli-w>=1.0.0**: TOML configuration writing
+- **toml>=0.10.2**: Fallback TOML support
+- **python-whois>=0.9.5**: Domain expiration checking
+- **python-gnupg>=0.5.5**: GPG signature verification
+- **portalocker>=2.0.0**: Cross-platform file locking
+- **beautifulsoup4>=4.9.3**: HTML parsing utilities
+- **google>=3.0.0**: Google search API (for package discovery)
+- **bloom-filter2**: Bloom filter implementation for caching
+
+### Development Dependencies
+- **pytest>=7.0.0**: Testing framework
+- **pytest-cov>=4.0.0**: Test coverage reporting
+- **black>=23.0.0**: Code formatting
+- **flake8>=6.0.0**: Linting
+- **mypy>=1.0.0**: Type checking
+
+### Optional Dependencies
+- **VirusTotal API Key**: Required for malware scanning
+- **Snyk API Key**: Required for advanced vulnerability analysis
+- **Semgrep**: Required for advanced static analysis rules
+- **Firejail**: Optional sandboxing for safer analysis
+
+## Installation Instructions
+
+### System Requirements
+- Python 3.8 or higher
+- pip package manager
+- Internet connection for PyPI and vulnerability database access
+
+### Basic Installation
+```bash
+# Install from PyPI
+pip install pypipq
+
+# Verify installation
+pipq --version
+```
+
+### Development Installation
+```bash
+# Clone the repository
+git clone https://github.com/livrasand/pipq.git
+cd pipq
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install in development mode with dev dependencies
+pip install -e .[dev]
+
+# Run tests (when implemented)
+pytest
+
+# Format code
+black .
+
+# Lint code
+flake8 .
+mypy .
+```
+
+### Configuration Setup
+```bash
+# Create user configuration directory
+mkdir -p ~/.config/pipq
+
+# Create config file
+cat > ~/.config/pipq/config.toml << EOF
+mode = "warn"
+auto_continue_warnings = true
+timeout = 30
+
+[vulnerability]
+enabled = true
+update_interval_days = 7
+sources = ["osv", "safetydb", "snyk"]
+
+[security]
+minimum_release_age = 0
+
+[api_keys]
+virustotal = "your_virustotal_api_key"
+snyk = "your_snyk_api_key"
+pepy_tech = "your_pepy_tech_api_key"
+EOF
+```
+
+### API Key Configuration
+Some features require API keys for external services:
+
+1. **VirusTotal** (Malware Detection):
+   - Sign up at https://www.virustotal.com/
+   - Get API key from account settings
+   - Set: `export VIRUSTOTAL_API_KEY="your_key"`
+
+2. **Snyk** (Advanced Vulnerabilities):
+   - Sign up at https://snyk.io/
+   - Get API key from account settings
+   - Set: `export SNYK_API_KEY="your_key"`
+
+3. **Pepy.tech** (Download Statistics):
+   - Sign up at https://pepy.tech/
+   - Get API key from account settings
+   - Set: `export PIPQ_API_KEYS_PEPEY_TECH="your_key"`
+
+## Next Steps
+
+### Immediate Priorities (Q1 2024)
+1. **Implement Test Suite**
+   - Create comprehensive unit tests for all validators
+   - Set up CI/CD pipeline with automated testing
+   - Achieve >80% test coverage
+   - Add integration tests for CLI commands
+
+2. **Enhance Malware Detection**
+   - Improve pattern-based detection algorithms
+   - Add support for additional malware signatures
+   - Implement behavioral analysis for suspicious code
+   - Add YARA rule integration
+
+3. **Performance Optimization**
+   - Implement parallel processing for validators
+   - Optimize caching strategies
+   - Reduce network request overhead
+   - Add progress indicators for long-running operations
+
+### Medium-term Goals (Q2-Q3 2024)
+1. **Advanced Reporting**
+   - Implement HTML/PDF report generation
+   - Add audit trail and historical tracking
+   - Create dashboard for security metrics
+   - Add export functionality for CI/CD integration
+
+2. **Additional Validators**
+   - Binary analysis for compiled extensions
+   - Advanced dependency confusion detection
+   - Supply chain risk scoring
+   - Code quality metrics integration
+
+3. **Platform Integration**
+   - GitHub Actions integration
+   - Pre-commit hooks
+   - IDE plugins (VS Code, PyCharm)
+   - Docker container scanning
+
+### Long-term Vision (2025+)
+1. **Enterprise Features**
+   - Multi-organization support
+   - Advanced policy management
+   - Integration with SIEM systems
+   - Compliance reporting (SOC2, ISO27001)
+
+2. **AI/ML Integration**
+   - Machine learning-based malware detection
+   - Automated risk assessment
+   - Predictive vulnerability analysis
+   - Smart policy recommendations
+
+3. **Community Growth**
+   - Plugin ecosystem for custom validators
+   - Comprehensive documentation
+   - Training and certification programs
+   - Industry partnerships
+
+### Contributing
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**Current Focus Areas for Contributors:**
+- Writing unit tests
+- Implementing new validators
+- Improving documentation
+- Performance optimizations
+- Bug fixes and error handling
+
+### Support
+- **Issues**: https://github.com/livrasand/pipq/issues
+- **Discussions**: https://github.com/livrasand/pipq/discussions
+- **Documentation**: https://github.com/livrasand/pipq/wiki
 
 ## Author
 
