@@ -22,7 +22,7 @@ class AstVisitor(ast.NodeVisitor):
         self.file_path = file_path
         self.findings: List[Dict[str, Any]] = []
         self.suspicious_imports = {
-            "socket", "subprocess", "os", "ftplib", "http.client",
+            "subprocess", "ftplib", "http.client",
             "urllib", "requests", "telnetlib", "shutil"
         }
         self.suspicious_calls = {"eval", "exec"}
@@ -132,7 +132,7 @@ class StaticAnalysisValidator(BaseValidator):
 
     def _run_virustotal_scan(self) -> None:
         if not self.virustotal_api_key:
-            self.add_info("VirusTotal Scan", "Skipped: VIRUSTOTAL_API_KEY not set.")
+            self.add_info("VirusTotal Scan", "Premium option: configure VIRUSTOTAL_API_KEY for malware scanning.")
             return
 
         if not self.downloaded_file_path:

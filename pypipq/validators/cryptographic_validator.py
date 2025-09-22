@@ -24,7 +24,7 @@ class CryptographicValidator(BaseValidator):
         if shutil.which("gpg"):
             self.gpg = gnupg.GPG()
         else:
-            self.add_warning("GPG executable not found. Skipping GPG signature verification.")
+            self.add_warning("GPG executable not found. Install GPG with 'sudo apt install gnupg' to enable signature verification.")
 
     def _validate(self) -> None:
         if not self.gpg:

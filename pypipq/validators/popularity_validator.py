@@ -18,10 +18,16 @@ class PopularityValidator(BaseValidator):
         super().__init__(pkg_name, metadata, config)
 
     def _validate(self) -> None:
+        api_key = self.config.get("api_keys.pepy_tech")
+        if not api_key:
+            self.add_info("Popularity Check", "Premium option: Register at pepy.tech, generate an API key, and configure it in ~/.config/pipq/config.toml as 'api_keys.pepy_tech' for download statistics.")
+            return
+
         api_url = f"https://api.pepy.tech/api/v2/projects/{self.pkg_name}"
 
         try:
-            response = requests.get(api_url)
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            response = requests.get(api_url, headers=headers)
             response.raise_for_status()
             data = response.json()
 

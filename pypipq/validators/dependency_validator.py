@@ -27,7 +27,7 @@ class DependencyValidator(BaseValidator):
 
         # Detect circular dependencies
         if self._has_circular_deps(deps_tree):
-            self.add_error("Circular dependencies detected")
+            self.add_warning("Circular dependencies detected (may be false positive)")
 
         # Analyze supply chain risk
         risk_score = self._calculate_supply_chain_risk(deps_tree)

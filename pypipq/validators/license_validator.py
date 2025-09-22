@@ -33,6 +33,10 @@ class LicenseValidator(BaseValidator):
             if match:
                 is_osi_approved = True
                 found_licenses.add(match.group(1).strip())
+            else:
+                match = re.match(r"License :: (.*)", classifier)
+                if match:
+                    found_licenses.add(match.group(1).strip())
 
         # 2. Use the 'license' field as a fallback if classifiers are not specific.
         if not found_licenses and license_string and license_string.strip().upper() not in ("UNKNOWN", ""):

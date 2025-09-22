@@ -41,6 +41,7 @@ dependencies = [
     "portalocker>=2.0.0",
     "beautifulsoup4>=4.9.3",
     "google>=3.0.0",
+    "bloom-filter2",
 ]
 
 [project.optional-dependencies]

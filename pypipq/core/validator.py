@@ -73,10 +73,16 @@ def _safe_extract(archive, extract_dir: Path) -> None:
     MAX_SIZE = 500 * 1024 * 1024  # 500MB limit
     total_size = 0
 
-    for member in archive.getmembers():
+    if isinstance(archive, zipfile.ZipFile):
+        members = archive.infolist()
+    else:
+        members = archive.getmembers()
+
+    for member in members:
         # Prevent path traversal
-        if member.name.startswith('/') or '..' in member.name:
-            raise ValueError(f"Unsafe path: {member.name}")
+        name = getattr(member, 'name', getattr(member, 'filename', ''))
+        if name.startswith('/') or '..' in name:
+            raise ValueError(f"Unsafe path: {name}")
 
         # Prevent zip bombs
         size = getattr(member, 'size', getattr(member, 'file_size', 0))
