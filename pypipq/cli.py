@@ -98,9 +98,13 @@ def _parse_package_spec(package_spec: str) -> Tuple[str, Optional[str]]:
 def main(ctx: click.Context, version: bool, verbose: bool, debug: bool) -> None:
     """
     pipq - A secure pip proxy inspired.
-    
+
     Analyzes packages before installation to detect potential security issues.
     """
+    if sys.platform == "win32":
+        import codecs
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, 'strict')
+
     log_level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)

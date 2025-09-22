@@ -4,6 +4,7 @@ Utilities for interacting with PyPI API.
 
 import requests
 import logging
+import time
 from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 
@@ -11,37 +12,42 @@ from urllib.parse import urljoin
 
 
 
-def fetch_package_metadata(pkg_name: str, pypi_url: str = "https://pypi.org/pypi/") -> Dict[str, Any]:
+def fetch_package_metadata(pkg_name: str, pypi_url: str = "https://pypi.org/pypi/", retries: int = 3) -> Dict[str, Any]:
     logger = logging.getLogger(__name__)
     logger.info(f"Fetching metadata for package: {pkg_name} from {pypi_url}")
     """
     Fetch package metadata from PyPI API.
-    
+
     Args:
         pkg_name: Name of the package
         pypi_url: Base URL for PyPI API
-        
+        retries: Number of retries on failure
+
     Returns:
         Dictionary containing package metadata
-        
+
     Raises:
         requests.RequestException: If API request fails
         ValueError: If package not found
     """
     url = urljoin(pypi_url, f"{pkg_name}/json")
-    
-    try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        
-        return response.json()
-        
-    except requests.exceptions.HTTPError as e:
-        if response.status_code == 404:
-            raise ValueError(f"Package '{pkg_name}' not found on PyPI")
-        raise e
-    except requests.exceptions.RequestException as e:
-        raise e
+
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 429:  # Rate limited
+                time.sleep(2 ** attempt)
+                continue
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 404:
+                raise ValueError(f"Package '{pkg_name}' not found on PyPI")
+            if attempt == retries - 1:
+                raise
+        except requests.exceptions.RequestException as e:
+            if attempt == retries - 1:
+                raise
 
 
 def get_package_info(metadata: Dict[str, Any]) -> Dict[str, Any]:

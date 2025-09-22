@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Type, Tuple, Optional
 import requests
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from .config import Config
 from .base_validator import BaseValidator
@@ -194,7 +196,8 @@ def validate_package(pkg_name: str, config: Config, version: Optional[str] = Non
         ]
 
         # 4. Run validators and aggregate results
-        validator_results = [v.validate() for v in enabled_validators]
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            validator_results = list(executor.map(lambda v: v.validate(), enabled_validators))
 
     aggregated_errors = [err for res in validator_results for err in res.get("errors", [])]
     aggregated_warnings = [warn for res in validator_results for warn in res.get("warnings", [])]
