@@ -1,6 +1,6 @@
 # pipq
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/livrasand/pipq) ![PyPI](https://img.shields.io/pypi/v/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq)](https://pepy.tech/projects/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq/week)](https://pepy.tech/projects/pypipq)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/livrasand/pipq) ![PyPI](https://img.shields.io/pypi/v/pypipq) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/livrasand/pipq/blob/main/LICENSE) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq)](https://pepy.tech/projects/pypipq) [![PyPI Downloads](https://static.pepy.tech/badge/pypipq/week)](https://pepy.tech/projects/pypipq) [![Security Responsible Disclosure](https://img.shields.io/badge/Security-Responsible%20Disclosure-yellow)](SECURITY.md)
 
 A secure pip proxy that analyzes Python packages before installation to detect potential security issues and risks.
 
